@@ -1,0 +1,26 @@
+# dependencies
+node_modules
+backend/node_modules
+
+# env
+.env
+backend/.env
+
+# build
+dist
+backend/dist
+
+# logs
+*.log
+npm-debug.log*
+
+# prisma sqlite local database
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+
+# generated prisma
+backend/src/generated
+
+# system
+.DS_Store
+Thumbs.db

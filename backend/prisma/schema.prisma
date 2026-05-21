@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  marketId String?
+  market   Market? @relation(fields: [marketId], references: [id])
+
+  ownedMarket Market? @relation("MarketOwner")
+}
+
+model Market {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String @unique
+  owner   User   @relation("MarketOwner", fields: [ownerId], references: [id])
+
+  users    User[]
+  products Product[]
+  sales    ProductSale[]
+}
+enum UserRole {
+  OWNER
+  MANAGER
+  CASHIER
+  STOCK
+}
+
+model Product {
+  id        String   @id @default(uuid())
+  marketId  String
+
+  name      String
+  sku       String?
+  barcode   String?
+  category  String?
+  brand     String?
+
+  isActive Boolean @default(true)
+
+  salePrice          Float
+  cost               Float   @default(0)
+  useSameOnlinePrice Boolean @default(true)
+  onlinePrice        Float   @default(0)
+
+  stock          Int     @default(0)
+  minStock       Int     @default(0)
+  allowBackorder Boolean @default(false)
+
+  isVisibleOnline Boolean @default(false)
+  description     String?
+  imageUrl        String?
+  isFeatured      Boolean @default(false)
+  allowPickup     Boolean @default(true)
+  allowDelivery   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  market    Market     @relation(fields: [marketId], references: [id])
+  saleItems SaleItem[]
+
+  @@index([marketId])
+}
+
+model ProductSale {
+  id            String     @id @default(uuid())
+  marketId      String
+  userId        String
+  customerName  String?
+  paymentMethod String
+  discount      Float      @default(0)
+  subtotal      Float
+  total         Float
+  status        SaleStatus @default(COMPLETED)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  market Market @relation(fields: [marketId], references: [id])
+  items  SaleItem[]
+
+  @@index([marketId])
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id          String @id @default(uuid())
+  saleId      String
+  productId   String
+  productName String
+  quantity    Int
+  unitPrice   Float
+  total       Float
+
+  sale    ProductSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product     @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}

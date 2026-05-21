@@ -1,0 +1,189 @@
+.product-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 24px;
+}
+
+.product-modal {
+  width: 100%;
+  max-width: 680px;
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.2);
+  padding: 20px 24px 20px;
+  font-family: inherit;
+}
+
+.product-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.product-modal-header h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.product-modal-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #4b5563;
+}
+
+.product-modal-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: #eef2f7;
+  border-radius: 14px;
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+
+.product-modal-tabs button {
+  height: 32px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  color: #556174;
+  cursor: pointer;
+}
+
+.product-modal-tabs button.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+  font-weight: 600;
+}
+
+.product-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 300px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.field input,
+.field textarea {
+  height: 38px;
+  border: 1px solid #d7dee8;
+  border-radius: 12px;
+  padding: 0 12px;
+  outline: none;
+  font-size: 14px;
+  color: #0f172a;
+  background: #fff;
+}
+
+.field textarea {
+  min-height: 76px;
+  padding: 10px 12px;
+  resize: none;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.setting-card {
+  border: 1px solid #d7dee8;
+  border-radius: 12px;
+  padding: 14px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.setting-card strong {
+  display: block;
+  font-size: 14px;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.setting-card p {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #667085;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.info-box {
+  border-radius: 10px;
+  background: #f3f6fa;
+  padding: 12px;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.mini-setting {
+  border: 1px solid #d7dee8;
+  border-radius: 12px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.mini-setting span {
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.product-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.save-button {
+  border: none;
+  background: #1f73e8;
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(31, 115, 232, 0.25);
+}

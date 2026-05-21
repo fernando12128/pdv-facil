@@ -1,0 +1,143 @@
+.sales-layout {
+  width: 100%;
+  min-height: 100vh;
+  background: #f6f9fc;
+  display: flex;
+  color: #020617;
+}
+
+.sales-main {
+  flex: 1;
+  min-width: 0;
+  background: #f6f9fc;
+}
+
+.sales-topbar {
+  height: 57px;
+  background: #f8fbff;
+  border-bottom: 1px solid #d9e1ec;
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+}
+
+.sales-topbar-button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.sales-content {
+  padding: 29px 25px 44px;
+}
+
+.sales-title-area {
+  margin-bottom: 27px;
+}
+
+.sales-title-area h1 {
+  margin: 0;
+  color: #000000;
+  font-size: 30px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.7px;
+}
+
+.sales-title-area p {
+  margin: 5px 0 0;
+  color: #44546a;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.sales-error {
+  margin: -12px 0 16px;
+  color: #dc2626;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.sales-table-card {
+  width: 100%;
+  min-height: 159px;
+  background: #ffffff;
+  border: 1px solid #d7e0eb;
+  border-radius: 15px;
+  overflow: hidden;
+  box-shadow:
+    0 2px 5px rgba(15, 23, 42, 0.08),
+    0 8px 16px rgba(15, 23, 42, 0.04);
+}
+
+.sales-table-header {
+  height: 41px;
+  border-bottom: 1px solid #d9e1ec;
+  display: grid;
+  grid-template-columns: 1fr 1.25fr 1.3fr 0.6fr;
+  align-items: center;
+  padding: 0 9px;
+  color: #344054;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sales-empty-row {
+  height: 117px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #44546a;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.sales-list {
+  width: 100%;
+}
+
+.sales-table-row {
+  min-height: 46px;
+  border-bottom: 1px solid #edf2f7;
+  display: grid;
+  grid-template-columns: 1fr 1.25fr 1.3fr 0.6fr;
+  align-items: center;
+  padding: 0 9px;
+  color: #111827;
+  font-size: 14px;
+}
+
+.sales-table-row:last-child {
+  border-bottom: 0;
+}
+
+.sales-table-row strong {
+  color: #1479ed;
+  font-size: 14px;
+}
+
+@media (max-width: 760px) {
+  .sales-layout {
+    flex-direction: column;
+  }
+
+  .sales-content {
+    padding: 20px 16px 36px;
+  }
+
+  .sales-table-card {
+    overflow-x: auto;
+  }
+
+  .sales-table-header,
+  .sales-table-row,
+  .sales-empty-row {
+    min-width: 650px;
+  }
+}
