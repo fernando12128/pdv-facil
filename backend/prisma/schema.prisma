@@ -38,6 +38,7 @@ model Market {
   users    User[]
   products Product[]
   sales    ProductSale[]
+  cashMovements CashMovement[]
 }
 enum UserRole {
   OWNER
@@ -122,4 +123,24 @@ model SaleItem {
 enum SaleStatus {
   COMPLETED
   CANCELLED
+}
+
+model CashMovement {
+  id        String           @id @default(uuid())
+  marketId  String
+  userId    String
+  type      CashMovementType
+  amount    Float
+  note      String?
+  createdAt DateTime         @default(now())
+
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@index([marketId])
+  @@index([createdAt])
+}
+
+enum CashMovementType {
+  SUPPLY
+  WITHDRAWAL
 }
