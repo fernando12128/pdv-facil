@@ -7,6 +7,7 @@ import { productsRoutes } from "./routes/products.routes";
 import { salesRoutes } from "./routes/sales.routes";
 import { dashboardRoutes } from "./routes/dashboard.routes";
 import { publicRoutes } from "./routes/public.routes";
+import { cashMovementsRoutes } from "./routes/cashMovements.routes";
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.get("/", (_req, res) => {
 app.use("/auth", authRoutes);
 app.use("/products", productsRoutes);
 app.use("/sales", salesRoutes);
+app.use("/cash-movements", cashMovementsRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/public", publicRoutes);
 
