@@ -35,10 +35,16 @@ model Market {
   ownerId String @unique
   owner   User   @relation("MarketOwner", fields: [ownerId], references: [id])
 
-  users    User[]
-  products Product[]
-  sales    ProductSale[]
-  cashMovements CashMovement[]
+  users           User[]
+  products        Product[]
+  sales           ProductSale[]
+  cashMovements   CashMovement[]
+  cashSessions    CashSession[]
+  categories      Category[]
+  customers       Customer[]
+  employees       Employee[]
+  paymentSettings PaymentSetting[]
+  onlineOrders    OnlineOrder[]
 }
 enum UserRole {
   OWNER
@@ -133,8 +139,10 @@ model CashMovement {
   amount    Float
   note      String?
   createdAt DateTime         @default(now())
+  cashSessionId String?
 
-  market Market @relation(fields: [marketId], references: [id])
+  market      Market       @relation(fields: [marketId], references: [id])
+  cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
 
   @@index([marketId])
   @@index([createdAt])
@@ -143,4 +151,141 @@ model CashMovement {
 enum CashMovementType {
   SUPPLY
   WITHDRAWAL
+}
+
+model CashSession {
+  id            String            @id @default(uuid())
+  marketId      String
+  userId        String
+  operatorName  String?
+  openingAmount Float
+  closingAmount Float?
+  status        CashSessionStatus @default(OPEN)
+  openedAt      DateTime          @default(now())
+  closedAt      DateTime?
+
+  market    Market         @relation(fields: [marketId], references: [id])
+  movements CashMovement[]
+
+  @@index([marketId])
+  @@index([status])
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  marketId  String
+  name      String
+  color     String   @default("#3b82f6")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@unique([marketId, name])
+  @@index([marketId])
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  marketId  String
+  name      String
+  phone     String?
+  email     String?
+  document  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@index([marketId])
+}
+
+model Employee {
+  id        String       @id @default(uuid())
+  marketId  String
+  name      String
+  role      EmployeeRole @default(CASHIER)
+  pin       String?
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@index([marketId])
+}
+
+enum EmployeeRole {
+  CASHIER
+  MANAGER
+}
+
+model PaymentSetting {
+  id        String   @id @default(uuid())
+  marketId  String
+  type      String
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@unique([marketId, type])
+  @@index([marketId])
+}
+
+model OnlineOrder {
+  id               String            @id @default(uuid())
+  marketId         String
+  orderNumber      String
+  customerName     String
+  customerPhone    String?
+  customerEmail    String?
+  customerDocument String?
+  deliveryType     String            @default("PICKUP")
+  address          String?
+  paymentMethod    String
+  status           OnlineOrderStatus @default(PENDING)
+  subtotal         Float
+  discount         Float             @default(0)
+  deliveryFee      Float             @default(0)
+  total            Float
+  note             String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  market Market            @relation(fields: [marketId], references: [id])
+  items  OnlineOrderItem[]
+
+  @@unique([marketId, orderNumber])
+  @@index([marketId])
+  @@index([createdAt])
+}
+
+model OnlineOrderItem {
+  id          String @id @default(uuid())
+  orderId     String
+  productName String
+  quantity    Int
+  unitPrice   Float
+  total       Float
+
+  order OnlineOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+enum OnlineOrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
 }

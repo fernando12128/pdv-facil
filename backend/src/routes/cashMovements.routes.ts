@@ -51,7 +51,7 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const { type, amount, note } = req.body;
+    const { type, amount, note, cashSessionId } = req.body;
     const normalizedType = String(type || "").trim() as CashMovementTypeInput;
     const parsedAmount = Number(amount);
 
@@ -67,6 +67,23 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       });
     }
 
+    const activeSession = await prisma.cashSession.findFirst({
+      where: {
+        id: cashSessionId ? String(cashSessionId) : undefined,
+        marketId: req.user.marketId,
+        status: "OPEN",
+      },
+      orderBy: {
+        openedAt: "desc",
+      },
+    });
+
+    if (!activeSession) {
+      return res.status(400).json({
+        message: "Abra o caixa antes de registrar movimentos.",
+      });
+    }
+
     const movement = await prisma.cashMovement.create({
       data: {
         marketId: req.user.marketId,
@@ -74,6 +91,7 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
         type: normalizedType,
         amount: parsedAmount,
         note: note ? String(note).trim() : null,
+        cashSessionId: activeSession.id,
       },
     });
 

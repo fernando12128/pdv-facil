@@ -8,13 +8,23 @@ import { salesRoutes } from "./routes/sales.routes";
 import { dashboardRoutes } from "./routes/dashboard.routes";
 import { publicRoutes } from "./routes/public.routes";
 import { cashMovementsRoutes } from "./routes/cashMovements.routes";
+import { managementRoutes } from "./routes/management.routes";
+import { cashSessionsRoutes } from "./routes/cashSessions.routes";
+import { onlineOrdersRoutes } from "./routes/onlineOrders.routes";
+import { reportsRoutes } from "./routes/reports.routes";
 
 const app = express();
+
+const configuredOrigins = String(process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
   "https://tabacaria-web.vercel.app",
+  ...configuredOrigins,
 ];
 
 app.use(
@@ -41,6 +51,10 @@ app.use("/auth", authRoutes);
 app.use("/products", productsRoutes);
 app.use("/sales", salesRoutes);
 app.use("/cash-movements", cashMovementsRoutes);
+app.use("/management", managementRoutes);
+app.use("/cash-sessions", cashSessionsRoutes);
+app.use("/online-orders", onlineOrdersRoutes);
+app.use("/reports", reportsRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/public", publicRoutes);
 

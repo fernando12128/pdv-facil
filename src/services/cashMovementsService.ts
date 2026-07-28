@@ -16,6 +16,7 @@ export type CreateCashMovementData = {
   type: CashMovementType;
   amount: number;
   note?: string;
+  cashSessionId: string;
 };
 
 type CashMovementsResponse = {
