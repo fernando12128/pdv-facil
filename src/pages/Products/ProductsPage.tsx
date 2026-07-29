@@ -1,307 +1,120 @@
 import { useEffect, useState } from "react";
-import Sidebar from "../../components/Sidebar/Sidebar";
+import { Eye, EyeOff, Pencil, Plus, Power } from "lucide-react";
+import AdminLayout from "../../components/layout/AdminLayout";
 import type { AppPage } from "../../components/Sidebar/Sidebar";
 import ProductModal from "../../components/products/ProductModal";
 import type { ProductFormData } from "../../types/product";
 import {
   createProductRequest,
-  deleteProductRequest,
   listProductsRequest,
+  updateProductRequest,
   type Product,
 } from "../../services/productsService";
-import "./ProductsPage.css";
 
-type ProductsPageProps = {
-  onLogout: () => void;
-  onNavigate: (page: AppPage) => void;
-};
+type Props = { onLogout: () => void; onNavigate: (page: AppPage) => void };
+const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export default function ProductsPage({
-  onLogout,
-  onNavigate,
-}: ProductsPageProps) {
+function toForm(product: Product): ProductFormData {
+  return {
+    name: product.name,
+    sku: product.sku || "",
+    barcode: product.barcode || "",
+    category: product.category || "",
+    brand: product.brand || "",
+    isActive: product.isActive,
+    salePrice: product.salePrice,
+    cost: product.cost,
+    useSameOnlinePrice: product.useSameOnlinePrice,
+    onlinePrice: product.onlinePrice,
+    stock: product.stock,
+    minStock: product.minStock,
+    allowBackorder: product.allowBackorder,
+    isVisibleOnline: product.isVisibleOnline,
+    description: product.description || "",
+    imageUrl: product.imageUrl || "",
+    isFeatured: product.isFeatured,
+    allowPickup: product.allowPickup,
+    allowDelivery: product.allowDelivery,
+  };
+}
+
+export default function ProductsPage({ onLogout, onNavigate }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [error, setError] = useState("");
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  async function loadProducts() {
+  async function load() {
     try {
-      setIsLoading(true);
-      setErrorMessage("");
-
-      const response = await listProductsRequest();
-
-      setProducts(response.products);
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage("Erro ao carregar produtos.");
-      }
-    } finally {
-      setIsLoading(false);
+      setProducts((await listProductsRequest()).products);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Erro ao carregar produtos.");
     }
   }
 
-  async function handleSaveProduct(data: ProductFormData) {
+  useEffect(() => { load(); }, []);
+
+  async function save(data: ProductFormData) {
     try {
-      setIsSaving(true);
-      setErrorMessage("");
-
-      await createProductRequest({
-        name: data.name,
-        sku: data.sku,
-        barcode: data.barcode,
-        category: data.category,
-        brand: data.brand,
-
-        isActive: data.isActive,
-
+      const payload = {
+        ...data,
         salePrice: Number(data.salePrice),
         cost: Number(data.cost),
-        useSameOnlinePrice: data.useSameOnlinePrice,
-        onlinePrice: Number(
-          data.useSameOnlinePrice ? data.salePrice : data.onlinePrice
-        ),
-
+        onlinePrice: Number(data.useSameOnlinePrice ? data.salePrice : data.onlinePrice),
         stock: Number(data.stock),
         minStock: Number(data.minStock),
-        allowBackorder: data.allowBackorder,
-
-        isVisibleOnline: data.isVisibleOnline,
-        description: data.description,
-        imageUrl: data.imageUrl,
-        isFeatured: data.isFeatured,
-        allowPickup: data.allowPickup,
-        allowDelivery: data.allowDelivery,
-      });
-
-      await loadProducts();
-      setIsModalOpen(false);
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage("Erro ao salvar produto.");
-      }
-    } finally {
-      setIsSaving(false);
+      };
+      if (editing) await updateProductRequest(editing.id, payload);
+      else await createProductRequest(payload);
+      setModalOpen(false);
+      setEditing(null);
+      await load();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Erro ao salvar produto.");
     }
   }
 
-  async function handleDeleteProduct(productId: string) {
-    const shouldDelete = window.confirm(
-      "Tem certeza que deseja excluir este produto?"
-    );
-
-    if (!shouldDelete) {
-      return;
-    }
-
-    try {
-      setErrorMessage("");
-
-      await deleteProductRequest(productId);
-
-      setProducts((currentProducts) =>
-        currentProducts.filter((product) => product.id !== productId)
-      );
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage("Erro ao excluir produto.");
-      }
-    }
+  async function quickUpdate(product: Product, changes: Partial<ProductFormData>) {
+    await updateProductRequest(product.id, { ...toForm(product), ...changes });
+    await load();
   }
-
-  function formatCurrency(value: number) {
-    return value.toLocaleString("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    });
-  }
-
-  function getOnlinePrice(product: Product) {
-    if (product.useSameOnlinePrice) {
-      return product.salePrice;
-    }
-
-    return product.onlinePrice;
-  }
-
-  const totalVisibleOnline = products.filter(
-    (product) => product.isVisibleOnline
-  ).length;
 
   return (
-    <main className="products-layout">
-      <Sidebar
-        activePage="products"
-        onNavigate={onNavigate}
-        onLogout={onLogout}
-      />
-
-      <section className="products-main">
-        <header className="products-topbar">
-          <button className="products-topbar-button">
-            <PanelIcon />
-          </button>
-        </header>
-
-        <div className="products-content">
-          <div className="products-header-row">
-            <div>
-              <h1>Produtos</h1>
-
-              <p>
-                {products.length}{" "}
-                {products.length === 1 ? "cadastrado" : "cadastrados"} ·{" "}
-                {totalVisibleOnline} na loja virtual
-              </p>
-            </div>
-
-            <button
-              className="new-product-button"
-              onClick={() => setIsModalOpen(true)}
-              disabled={isSaving}
-            >
-              <PlusIcon />
-              <span>Novo Produto</span>
-            </button>
-          </div>
-
-          {errorMessage && <p className="products-error">{errorMessage}</p>}
-
-          <section className="products-table-card">
-            <div className="products-table-header products-table-header-new">
-              <span>Produto</span>
-              <span>Categoria</span>
-              <span>Balcão</span>
-              <span>Online</span>
-              <span>Estoque</span>
-              <span>Loja virtual</span>
-              <span>Status</span>
-              <span>Ações</span>
-            </div>
-
-            {isLoading ? (
-              <div className="products-empty-row">Carregando produtos...</div>
-            ) : products.length === 0 ? (
-              <div className="products-empty-row">
-                Nenhum produto. Clique em "Novo Produto".
-              </div>
-            ) : (
-              <div className="products-list">
-                {products.map((product) => (
-                  <div
-                    className="products-table-row products-table-row-new"
-                    key={product.id}
-                  >
-                    <div className="product-name-cell">
-                      <strong>{product.name}</strong>
-
-                      <span>
-                        {product.sku ? `SKU: ${product.sku}` : "Sem SKU"}
-                      </span>
-                    </div>
-
-                    <span>{product.category || "-"}</span>
-
-                    <span>{formatCurrency(product.salePrice)}</span>
-
-                    <span>{formatCurrency(getOnlinePrice(product))}</span>
-
-                    <span
-                      className={
-                        product.stock <= product.minStock
-                          ? "stock-low-text"
-                          : ""
-                      }
-                    >
-                      {product.stock}
-                    </span>
-
-                    <span>
-                      {product.isVisibleOnline ? (
-                        <span className="status-pill online">Publicado</span>
-                      ) : (
-                        <span className="status-pill hidden">Oculto</span>
-                      )}
-                    </span>
-
-                    <span>
-                      {product.isActive ? (
-                        <span className="status-pill active">Ativo</span>
-                      ) : (
-                        <span className="status-pill inactive">Inativo</span>
-                      )}
-                    </span>
-
-                    <div className="products-actions">
-                      <button
-                        className="delete-product-button"
-                        onClick={() => handleDeleteProduct(product.id)}
-                      >
-                        Excluir
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+    <AdminLayout activePage="products" onNavigate={onNavigate} onLogout={onLogout}>
+      <div className="page-stack">
+        <div className="page-heading">
+          <div><h1>Produtos</h1><p>{products.length} cadastrados · {products.filter((item) => item.isVisibleOnline).length} na loja virtual</p></div>
+          <button className="primary-button" onClick={() => { setEditing(null); setModalOpen(true); }}><Plus /> Novo Produto</button>
         </div>
-      </section>
-
-      <ProductModal
-        open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSave={handleSaveProduct}
-      />
-    </main>
-  );
-}
-
-function PanelIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-      <rect
-        x="4"
-        y="5"
-        width="16"
-        height="14"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <path d="M10 5V19" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M12 5V19"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M5 12H19"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
+        {error && <p className="feedback-error">{error}</p>}
+        <section className="card table-wrap">
+          <table className="data-table">
+            <thead><tr><th>Produto</th><th>Categoria</th><th className="right">Balcão</th><th className="right">Online</th><th className="right">Estoque</th><th>Loja virtual</th><th>Status</th><th className="right">Ações</th></tr></thead>
+            <tbody>
+              {products.map((product) => (
+                <tr key={product.id}>
+                  <td><strong>{product.name}</strong><small style={{ display: "block", color: "var(--muted-foreground)" }}>{product.sku ? `SKU: ${product.sku}` : "Sem SKU"}</small></td>
+                  <td>{product.category || "-"}</td>
+                  <td className="right">{brl(product.salePrice)}</td>
+                  <td className="right">{brl(product.useSameOnlinePrice ? product.salePrice : product.onlinePrice)}</td>
+                  <td className="right">{product.stock <= product.minStock ? <span className="badge danger">{product.stock}</span> : product.stock}</td>
+                  <td><span className={`badge ${product.isVisibleOnline ? "success" : ""}`}>{product.isVisibleOnline ? "Publicado" : "Oculto"}</span></td>
+                  <td><span className={`badge ${product.isActive ? "info" : ""}`}>{product.isActive ? "Ativo" : "Inativo"}</span></td>
+                  <td className="right">
+                    <div style={{ display: "flex", gap: 5, justifyContent: "flex-end" }}>
+                      <button className="icon-button" title="Editar" onClick={() => { setEditing(product); setModalOpen(true); }}><Pencil /></button>
+                      <button className="icon-button" title={product.isVisibleOnline ? "Ocultar da loja" : "Publicar"} onClick={() => quickUpdate(product, { isVisibleOnline: !product.isVisibleOnline })}>{product.isVisibleOnline ? <EyeOff /> : <Eye />}</button>
+                      <button className="icon-button" title={product.isActive ? "Desativar" : "Ativar"} onClick={() => quickUpdate(product, { isActive: !product.isActive })}><Power /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!products.length && <div className="empty-state">Nenhum produto. Clique em "Novo Produto".</div>}
+        </section>
+      </div>
+      {modalOpen && <ProductModal key={editing?.id || "new"} open onClose={() => { setModalOpen(false); setEditing(null); }} onSave={save} product={editing ? toForm(editing) : null} />}
+    </AdminLayout>
   );
 }

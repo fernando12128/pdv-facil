@@ -1,0 +1,56 @@
+.admin-layout {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  background: color-mix(in srgb, var(--muted) 45%, var(--background));
+}
+
+.admin-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-content {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.admin-mobile-topbar {
+  height: 56px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  display: none;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.admin-mobile-topbar button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+}
+
+.admin-mobile-topbar svg {
+  width: 19px;
+}
+
+@media (max-width: 900px) {
+  .admin-mobile-topbar {
+    display: flex;
+  }
+
+  .admin-content {
+    padding: 18px 14px 28px;
+  }
+}

@@ -164,7 +164,7 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
           throw new HttpError(400, "Quantidade inválida.");
         }
 
-        if (product.stock < item.quantity) {
+        if (!product.allowBackorder && product.stock < item.quantity) {
           throw new HttpError(
             400,
             `Estoque insuficiente para o produto "${product.name}".`

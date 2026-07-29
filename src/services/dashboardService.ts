@@ -11,7 +11,10 @@ export type DashboardData = {
   salesToday: number;
   revenueLast7Days: number;
   productsCount: number;
+  activeProductsCount: number;
   lowStockCount: number;
+  onlineOrdersToday: number;
+  cashOpenedAt: string | null;
   chart: DashboardChartItem[];
 };
 

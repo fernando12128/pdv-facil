@@ -1,122 +1,66 @@
 import { useEffect, useState } from "react";
-import Sidebar from "../../components/Sidebar/Sidebar";
+import { Eye } from "lucide-react";
+import AdminLayout from "../../components/layout/AdminLayout";
 import type { AppPage } from "../../components/Sidebar/Sidebar";
 import { listSalesRequest, type Sale } from "../../services/salesService";
-import "./SalesPage.css";
 
-type SalesPageProps = {
-  onLogout: () => void;
-  onNavigate: (page: AppPage) => void;
+type Props = { onLogout: () => void; onNavigate: (page: AppPage) => void };
+const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const labels: Record<string, string> = {
+  Dinheiro: "Dinheiro",
+  Pix: "Pix",
+  "Cartão de crédito": "Crédito",
+  "Cartão de débito": "Débito",
 };
 
-export default function SalesPage({ onLogout, onNavigate }: SalesPageProps) {
+export default function SalesPage({ onLogout, onNavigate }: Props) {
   const [sales, setSales] = useState<Sale[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [selected, setSelected] = useState<Sale | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    loadSales();
+    listSalesRequest().then((result) => setSales(result.sales)).catch((value) => setError(value instanceof Error ? value.message : "Erro ao carregar vendas."));
   }, []);
 
-  async function loadSales() {
-    try {
-      setIsLoading(true);
-      setErrorMessage("");
-
-      const response = await listSalesRequest();
-
-      setSales(response.sales);
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage("Erro ao carregar vendas.");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  function formatCurrency(value: number) {
-    return value.toLocaleString("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    });
-  }
-
-  function formatDate(date: string) {
-    return new Intl.DateTimeFormat("pt-BR", {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(new Date(date));
-  }
-
   return (
-    <main className="sales-layout">
-      <Sidebar activePage="sales" onNavigate={onNavigate} onLogout={onLogout} />
-
-      <section className="sales-main">
-        <header className="sales-topbar">
-          <button className="sales-topbar-button">
-            <PanelIcon />
-          </button>
-        </header>
-
-        <div className="sales-content">
-          <div className="sales-title-area">
-            <h1>Vendas</h1>
-            <p>
-              {sales.length}{" "}
-              {sales.length === 1 ? "venda registrada" : "vendas registradas"}
-            </p>
-          </div>
-
-          {errorMessage && <p className="sales-error">{errorMessage}</p>}
-
-          <section className="sales-table-card">
-            <div className="sales-table-header">
-              <span>Data</span>
-              <span>Cliente</span>
-              <span>Pagamento</span>
-              <span>Total</span>
-            </div>
-
-            {isLoading ? (
-              <div className="sales-empty-row">Carregando vendas...</div>
-            ) : sales.length === 0 ? (
-              <div className="sales-empty-row">Nenhuma venda ainda.</div>
-            ) : (
-              <div className="sales-list">
-                {sales.map((sale) => (
-                  <div className="sales-table-row" key={sale.id}>
-                    <span>{formatDate(sale.createdAt)}</span>
-                    <span>{sale.customerName || "-"}</span>
-                    <span>{sale.paymentMethod}</span>
-                    <strong>{formatCurrency(sale.total)}</strong>
-                  </div>
-                ))}
+    <AdminLayout activePage="sales" onNavigate={onNavigate} onLogout={onLogout}>
+      <div className="page-stack">
+        <div className="page-heading"><div><h1>Vendas</h1><p>{sales.length} vendas</p></div></div>
+        {error && <p className="feedback-error">{error}</p>}
+        <section className="card table-wrap">
+          <table className="data-table">
+            <thead><tr><th>Data</th><th>Cliente</th><th>Pagamento</th><th className="right">Total</th><th className="right"></th></tr></thead>
+            <tbody>{sales.map((sale) => (
+              <tr key={sale.id}>
+                <td>{new Date(sale.createdAt).toLocaleString("pt-BR")}</td>
+                <td>{sale.customerName || "-"}</td>
+                <td><span className="badge">{labels[sale.paymentMethod] || sale.paymentMethod}</span></td>
+                <td className="right"><strong>{brl(sale.total)}</strong></td>
+                <td className="right"><button className="icon-button" onClick={() => setSelected(sale)}><Eye /></button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+          {!sales.length && <div className="empty-state">Nenhuma venda ainda.</div>}
+        </section>
+      </div>
+      {selected && (
+        <div className="modal-backdrop">
+          <div className="modal-card">
+            <div className="modal-header"><h2>Detalhes da venda</h2></div>
+            <div className="modal-body">
+              <div className="detail-line"><span>Data:</span><span>{new Date(selected.createdAt).toLocaleString("pt-BR")}</span></div>
+              <div className="detail-line"><span>Pagamento:</span><span>{labels[selected.paymentMethod] || selected.paymentMethod}</span></div>
+              {selected.customerName && <div className="detail-line"><span>Cliente:</span><span>{selected.customerName}</span></div>}
+              <div className="order-detail-section">
+                {selected.items.map((item) => <div className="detail-line" key={item.id}><span>{item.quantity}× {item.productName}<small style={{ display: "block", color: "var(--muted-foreground)" }}>{brl(item.unitPrice)}</small></span><strong>{brl(item.total)}</strong></div>)}
               </div>
-            )}
-          </section>
+              {selected.discount > 0 && <div className="detail-line"><span>Desconto</span><span>- {brl(selected.discount)}</span></div>}
+              <div className="detail-line"><strong>Total</strong><strong>{brl(selected.total)}</strong></div>
+            </div>
+            <div className="modal-actions"><button className="outline-button" onClick={() => setSelected(null)}>Fechar</button></div>
+          </div>
         </div>
-      </section>
-    </main>
-  );
-}
-
-function PanelIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-      <rect
-        x="4"
-        y="5"
-        width="16"
-        height="14"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <path d="M10 5V19" stroke="currentColor" strokeWidth="2" />
-    </svg>
+      )}
+    </AdminLayout>
   );
 }
