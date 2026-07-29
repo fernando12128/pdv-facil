@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import ToggleSwitch from "../ui/ToggleSwitch";
-import type { Product, ProductFormData } from "../../types/product";
+import type { ProductFormData } from "../../types/product";
 import "./ProductModal.css";
 
 type ProductTab = "basic" | "prices" | "stock" | "online";
@@ -10,6 +10,7 @@ interface ProductModalProps {
   open: boolean;
   onClose: () => void;
   onSave: (product: ProductFormData) => void;
+  product?: ProductFormData | null;
 }
 
 const initialForm: ProductFormData = {
@@ -42,9 +43,10 @@ export default function ProductModal({
   open,
   onClose,
   onSave,
+  product,
 }: ProductModalProps) {
   const [activeTab, setActiveTab] = useState<ProductTab>("basic");
-  const [form, setForm] = useState<ProductFormData>(initialForm);
+  const [form, setForm] = useState<ProductFormData>(() => product || initialForm);
 
   const effectiveOnlinePrice = useMemo(() => {
     return form.useSameOnlinePrice ? form.salePrice : form.onlinePrice;
@@ -72,10 +74,6 @@ export default function ProductModal({
     };
 
     onSave(payload);
-
-    setForm(initialForm);
-    setActiveTab("basic");
-    onClose();
   }
 
   if (!open) return null;
@@ -84,7 +82,7 @@ export default function ProductModal({
     <div className="product-modal-overlay">
       <div className="product-modal">
         <div className="product-modal-header">
-          <h2>Novo produto</h2>
+          <h2>{product ? "Editar produto" : "Novo produto"}</h2>
 
           <button
             type="button"

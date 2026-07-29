@@ -9,13 +9,14 @@ type AuthPageProps = {
 };
 
 export default function AuthPage({ onLogin }: AuthPageProps) {
-  const [mode, setMode] = useState<AuthMode>("register");
+  const [mode, setMode] = useState<AuthMode>("login");
 
   const [marketName, setMarketName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isLogin = mode === "login";
@@ -34,8 +35,9 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
         return;
       }
 
-      const response = await registerRequest(marketName, email, password);
-      onLogin(response.token);
+      await registerRequest(marketName, email, password);
+      setSuccessMessage("Conta criada! Você já pode entrar.");
+      setMode("login");
     } catch (error) {
       if (error instanceof Error) {
         setErrorMessage(error.message);
@@ -50,6 +52,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
   function handleChangeMode(newMode: AuthMode) {
     setMode(newMode);
     setErrorMessage("");
+    setSuccessMessage("");
   }
 
   return (
@@ -91,6 +94,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
                 value={marketName}
                 onChange={(event) => setMarketName(event.target.value)}
                 autoComplete="organization"
+                placeholder="Mercado do João"
               />
             </div>
           )}
@@ -118,6 +122,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
           </div>
 
           {errorMessage && <p className="auth-error">{errorMessage}</p>}
+          {successMessage && <p className="auth-success">{successMessage}</p>}
 
           <button type="submit" className="submit-button" disabled={isSubmitting}>
             {isSubmitting ? "Carregando..." : isLogin ? "Entrar" : "Criar conta"}

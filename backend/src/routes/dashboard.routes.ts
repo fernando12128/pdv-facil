@@ -33,8 +33,11 @@ dashboardRoutes.get("/", async (req: AuthenticatedRequest, res) => {
       revenueLast7DaysResult,
       salesToday,
       productsCount,
+      activeProductsCount,
       lowStockProducts,
       salesLast7Days,
+      onlineOrdersToday,
+      openCashSession,
     ] = await Promise.all([
       prisma.productSale.aggregate({
         where: {
@@ -81,6 +84,13 @@ dashboardRoutes.get("/", async (req: AuthenticatedRequest, res) => {
         },
       }),
 
+      prisma.product.count({
+        where: {
+          marketId: req.user.marketId,
+          isActive: true,
+        },
+      }),
+
       prisma.product.findMany({
         where: {
           marketId: req.user.marketId,
@@ -109,6 +119,27 @@ dashboardRoutes.get("/", async (req: AuthenticatedRequest, res) => {
           createdAt: "asc",
         },
       }),
+
+      prisma.onlineOrder.count({
+        where: {
+          marketId: req.user.marketId,
+          status: { not: "CANCELLED" },
+          createdAt: {
+            gte: startOfToday,
+            lt: startOfTomorrow,
+          },
+        },
+      }),
+
+      prisma.cashSession.findFirst({
+        where: {
+          marketId: req.user.marketId,
+          status: "OPEN",
+        },
+        orderBy: {
+          openedAt: "desc",
+        },
+      }),
     ]);
 
     const lowStockCount = lowStockProducts.filter(
@@ -122,7 +153,10 @@ dashboardRoutes.get("/", async (req: AuthenticatedRequest, res) => {
       salesToday,
       revenueLast7Days: revenueLast7DaysResult._sum.total || 0,
       productsCount,
+      activeProductsCount,
       lowStockCount,
+      onlineOrdersToday,
+      cashOpenedAt: openCashSession?.openedAt || null,
       chart,
     });
   } catch (error) {

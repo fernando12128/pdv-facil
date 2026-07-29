@@ -1,7 +1,9 @@
-const API_URL = "http://localhost:3333";
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:3333"
+).replace(/\/$/, "");
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   token?: string | null;
 };
