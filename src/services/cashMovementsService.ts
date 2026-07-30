@@ -9,6 +9,7 @@ export type CashMovement = {
   type: CashMovementType;
   amount: number;
   note?: string | null;
+  cashSessionId?: string | null;
   createdAt: string;
 };
 

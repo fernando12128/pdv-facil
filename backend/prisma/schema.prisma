@@ -94,6 +94,7 @@ model ProductSale {
   id            String     @id @default(uuid())
   marketId      String
   userId        String
+  cashSessionId String?
   customerName  String?
   paymentMethod String
   discount      Float      @default(0)
@@ -103,10 +104,12 @@ model ProductSale {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
-  market Market @relation(fields: [marketId], references: [id])
-  items  SaleItem[]
+  market      Market       @relation(fields: [marketId], references: [id])
+  cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
+  items       SaleItem[]
 
   @@index([marketId])
+  @@index([cashSessionId])
   @@index([createdAt])
 }
 
@@ -154,18 +157,32 @@ enum CashMovementType {
 }
 
 model CashSession {
-  id            String            @id @default(uuid())
-  marketId      String
-  userId        String
-  operatorName  String?
-  openingAmount Float
-  closingAmount Float?
-  status        CashSessionStatus @default(OPEN)
-  openedAt      DateTime          @default(now())
-  closedAt      DateTime?
+  id                String            @id @default(uuid())
+  marketId          String
+  userId            String
+  operatorName      String?
+  openingAmount     Float
+  closingAmount     Float?
+  expectedCash      Float?
+  difference        Float?
+  closingCode       String?           @unique
+  closingStatus     String?
+  grossSales        Float?
+  discounts         Float?
+  netSales          Float?
+  discrepancyReason String?
+  discrepancyNote   String?
+  actionTaken       String?
+  finalNote         String?
+  countHistory      Json?
+  paymentSummary    Json?
+  status            CashSessionStatus @default(OPEN)
+  openedAt          DateTime          @default(now())
+  closedAt          DateTime?
 
   market    Market         @relation(fields: [marketId], references: [id])
   movements CashMovement[]
+  sales     ProductSale[]
 
   @@index([marketId])
   @@index([status])
