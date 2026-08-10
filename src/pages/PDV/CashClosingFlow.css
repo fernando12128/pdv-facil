@@ -702,6 +702,62 @@
   margin-top: 16px;
 }
 
+.closing-corrections-box {
+  margin-top: 16px;
+  border: 1px solid #b9d5fb;
+  border-radius: 14px;
+  padding: 16px;
+  background: #f8fbff;
+}
+
+.closing-corrections-box > h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+
+.closing-corrections-box > h3 svg {
+  width: 16px;
+}
+
+.closing-corrections-box > p {
+  margin: 5px 0 14px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.closing-correction-timeline {
+  display: grid;
+  gap: 10px;
+}
+
+.closing-correction-timeline article {
+  border: 1px solid #d7e0eb;
+  border-radius: 11px;
+  padding: 12px;
+  background: #fff;
+}
+
+.closing-correction-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e4e7ec;
+  padding-bottom: 8px;
+  margin-bottom: 9px;
+  font-size: 12px;
+}
+
+.closing-correction-heading span {
+  color: #667085;
+}
+
+.closing-readonly-actions {
+  gap: 8px;
+}
+
 .closing-readonly-print > h3 {
   margin-top: 18px;
 }
