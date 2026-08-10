@@ -1,4 +1,5 @@
 import { Router } from "express";
+import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 import {
   authMiddleware,
@@ -95,6 +96,14 @@ managementRoutes.get("/employees", async (req: AuthenticatedRequest, res) => {
   const employees = await prisma.employee.findMany({
     where: { marketId: marketId(req) },
     orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
   return res.json({ employees });
 });
@@ -117,8 +126,16 @@ managementRoutes.post("/employees", async (req: AuthenticatedRequest, res) => {
       marketId: marketId(req),
       name,
       role,
-      pin,
+      pin: pin ? await bcrypt.hash(pin, 10) : null,
       isActive: req.body.isActive !== false,
+    },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
     },
   });
   return res.status(201).json({ employee });
@@ -136,6 +153,14 @@ managementRoutes.patch(
     const employee = await prisma.employee.update({
       where: { id: current.id },
       data: { isActive: !current.isActive },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
     return res.json({ employee });
   }

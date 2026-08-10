@@ -14,6 +14,7 @@ export type Sale = {
   id: string;
   marketId: string;
   userId: string;
+  cashSessionId?: string | null;
   customerName?: string | null;
   paymentMethod: string;
   discount: number;

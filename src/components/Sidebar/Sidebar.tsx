@@ -5,6 +5,7 @@ import {
   CreditCard,
   FileChartColumnIncreasing,
   Globe,
+  LockKeyhole,
   LayoutDashboard,
   LogOut,
   Package,
@@ -28,6 +29,7 @@ export type AppPage =
   | "customers"
   | "employees"
   | "sales"
+  | "cash-closings"
   | "online-orders"
   | "payments"
   | "reports"
@@ -50,6 +52,11 @@ type SidebarProps = {
 const operationItems: SidebarItem[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard /> },
   { id: "sales", label: "Vendas", icon: <ReceiptText /> },
+  {
+    id: "cash-closings",
+    label: "Fechamentos de Caixa",
+    icon: <LockKeyhole />,
+  },
   { id: "online-orders", label: "Pedidos Online", icon: <Globe /> },
 ];
 

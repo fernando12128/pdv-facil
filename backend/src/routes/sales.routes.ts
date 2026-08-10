@@ -132,6 +132,18 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
     }
 
     const sale = await prisma.$transaction(async (tx) => {
+      const activeSession = await tx.cashSession.findFirst({
+        where: {
+          marketId: req.user!.marketId,
+          status: "OPEN",
+        },
+        orderBy: { openedAt: "desc" },
+      });
+
+      if (!activeSession) {
+        throw new HttpError(400, "Abra o caixa antes de finalizar uma venda.");
+      }
+
       const productIds = normalizedItems.map((item) => item.productId);
 
       const products = await tx.product.findMany({
@@ -174,12 +186,27 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
         subtotal += product.salePrice * item.quantity;
       }
 
-      const total = Math.max(subtotal - parsedDiscount, 0);
+      if (parsedDiscount > subtotal) {
+        throw new HttpError(
+          400,
+          "O desconto não pode ser maior que o subtotal da venda."
+        );
+      }
+
+      const total = subtotal - parsedDiscount;
+
+      if (total <= 0) {
+        throw new HttpError(
+          400,
+          "Não é possível concluir uma venda com valor zerado."
+        );
+      }
 
       const createdSale = await tx.productSale.create({
         data: {
           marketId: req.user!.marketId,
           userId: req.user!.userId,
+          cashSessionId: activeSession.id,
           customerName: customerName ? String(customerName).trim() : null,
           paymentMethod: String(paymentMethod),
           discount: parsedDiscount,
