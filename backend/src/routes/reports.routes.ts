@@ -3,13 +3,16 @@ import { prisma } from "../lib/prisma";
 import {
   authMiddleware,
   AuthenticatedRequest,
+  requireRoles,
 } from "../middlewares/authMiddleware";
+import { roundMoney } from "../lib/money";
+import { normalizePaymentMethod } from "../lib/paymentMethods";
 
 export const reportsRoutes = Router();
 
 reportsRoutes.use(authMiddleware);
 
-reportsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
+reportsRoutes.get("/", requireRoles("OWNER", "MANAGER", "STOCK"), async (req: AuthenticatedRequest, res) => {
   const range = String(req.query.range || "7");
   const days = range === "30" ? 30 : 7;
   const start = new Date();
@@ -34,16 +37,17 @@ reportsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
     const day = sale.createdAt.toISOString().slice(0, 10);
     const currentDay = byDay.get(day) || { sales: 0, total: 0 };
     currentDay.sales += 1;
-    currentDay.total += sale.total;
+    currentDay.total = roundMoney(currentDay.total + sale.total);
     byDay.set(day, currentDay);
 
-    const payment = byPayment.get(sale.paymentMethod) || {
+    const paymentName = normalizePaymentMethod(sale.paymentMethod) || sale.paymentMethod;
+    const payment = byPayment.get(paymentName) || {
       count: 0,
       total: 0,
     };
     payment.count += 1;
-    payment.total += sale.total;
-    byPayment.set(sale.paymentMethod, payment);
+    payment.total = roundMoney(payment.total + sale.total);
+    byPayment.set(paymentName, payment);
 
     for (const item of sale.items) {
       const product = products.get(item.productName) || {
@@ -51,7 +55,7 @@ reportsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
         total: 0,
       };
       product.quantity += item.quantity;
-      product.total += item.total;
+      product.total = roundMoney(product.total + item.total);
       products.set(item.productName, product);
     }
   }

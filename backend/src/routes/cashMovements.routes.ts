@@ -4,6 +4,8 @@ import {
   authMiddleware,
   AuthenticatedRequest,
 } from "../middlewares/authMiddleware";
+import { parseMoney, roundMoney } from "../lib/money";
+import { isCashPayment } from "../lib/paymentMethods";
 
 export const cashMovementsRoutes = Router();
 
@@ -53,7 +55,7 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
 
     const { type, amount, note, cashSessionId } = req.body;
     const normalizedType = String(type || "").trim() as CashMovementTypeInput;
-    const parsedAmount = Number(amount);
+    const parsedAmount = parseMoney(amount, { allowZero: false });
 
     if (!movementTypes.includes(normalizedType)) {
       return res.status(400).json({
@@ -61,7 +63,7 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+    if (parsedAmount === null) {
       return res.status(400).json({
         message: "Informe um valor maior que zero.",
       });
@@ -84,15 +86,60 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const movement = await prisma.cashMovement.create({
-      data: {
-        marketId: req.user.marketId,
-        userId: req.user.userId,
-        type: normalizedType,
-        amount: parsedAmount,
-        note: note ? String(note).trim() : null,
-        cashSessionId: activeSession.id,
-      },
+    const movement = await prisma.$transaction(async (tx) => {
+      const freshSession = await tx.cashSession.findFirst({
+        where: {
+          id: activeSession.id,
+          marketId: req.user!.marketId,
+          status: "OPEN",
+        },
+        include: { movements: true, sales: true },
+      });
+
+      if (!freshSession) {
+        throw new MovementError(409, "O caixa não está mais aberto.");
+      }
+
+      if (normalizedType === "WITHDRAWAL") {
+        const cashSales = freshSession.sales
+          .filter((sale) => sale.status === "COMPLETED" && isCashPayment(sale.paymentMethod))
+          .reduce((sum, sale) => sum + sale.total, 0);
+        const supplies = freshSession.movements
+          .filter((item) => item.type === "SUPPLY")
+          .reduce((sum, item) => sum + item.amount, 0);
+        const withdrawals = freshSession.movements
+          .filter((item) => item.type === "WITHDRAWAL")
+          .reduce((sum, item) => sum + item.amount, 0);
+        const available = roundMoney(
+          freshSession.openingAmount + cashSales + supplies - withdrawals
+        );
+
+        if (parsedAmount > available) {
+          throw new MovementError(
+            400,
+            `A sangria não pode exceder o saldo disponível de R$ ${available.toFixed(2)}.`
+          );
+        }
+      }
+
+      const locked = await tx.cashSession.updateMany({
+        where: { id: freshSession.id, status: "OPEN", revision: freshSession.revision },
+        data: { revision: { increment: 1 } },
+      });
+      if (locked.count !== 1) {
+        throw new MovementError(409, "O caixa mudou. Tente registrar o movimento novamente.");
+      }
+
+      return tx.cashMovement.create({
+        data: {
+          marketId: req.user!.marketId,
+          userId: req.user!.userId,
+          type: normalizedType,
+          amount: parsedAmount,
+          note: note ? String(note).trim() : null,
+          cashSessionId: freshSession.id,
+        },
+      });
     });
 
     return res.status(201).json({
@@ -101,8 +148,18 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     console.error(error);
 
+    if (error instanceof MovementError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+
     return res.status(500).json({
       message: "Erro ao registrar movimento de caixa.",
     });
   }
 });
+
+class MovementError extends Error {
+  constructor(public statusCode: number, message: string) {
+    super(message);
+  }
+}

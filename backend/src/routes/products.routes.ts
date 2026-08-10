@@ -3,7 +3,9 @@ import { prisma } from "../lib/prisma";
 import {
   authMiddleware,
   AuthenticatedRequest,
+  requireRoles,
 } from "../middlewares/authMiddleware";
+import { parseMoney } from "../lib/money";
 
 export const productsRoutes = Router();
 
@@ -38,7 +40,10 @@ productsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
   }
 });
 
-productsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
+productsRoutes.post(
+  "/",
+  requireRoles("OWNER", "MANAGER", "STOCK"),
+  async (req: AuthenticatedRequest, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({
@@ -78,8 +83,8 @@ productsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const parsedSalePrice = Number(salePrice);
-    const parsedCost = Number(cost || 0);
+    const parsedSalePrice = parseMoney(salePrice);
+    const parsedCost = parseMoney(cost || 0);
     const parsedStock = Number(stock || 0);
     const parsedMinStock = Number(minStock || 0);
 
@@ -88,21 +93,21 @@ productsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
 
     const parsedOnlinePrice = parsedUseSameOnlinePrice
       ? parsedSalePrice
-      : Number(onlinePrice || 0);
+      : parseMoney(onlinePrice || 0);
 
-    if (Number.isNaN(parsedSalePrice) || parsedSalePrice < 0) {
+    if (parsedSalePrice === null) {
       return res.status(400).json({
         message: "Preço de venda inválido.",
       });
     }
 
-    if (Number.isNaN(parsedCost) || parsedCost < 0) {
+    if (parsedCost === null) {
       return res.status(400).json({
         message: "Custo inválido.",
       });
     }
 
-    if (Number.isNaN(parsedOnlinePrice) || parsedOnlinePrice < 0) {
+    if (parsedOnlinePrice === null) {
       return res.status(400).json({
         message: "Preço online inválido.",
       });
@@ -159,13 +164,23 @@ productsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     console.error(error);
 
+    if (isUniqueConstraintError(error)) {
+      return res.status(409).json({
+        message: "Já existe um produto com este SKU ou código de barras.",
+      });
+    }
+
     return res.status(500).json({
       message: "Erro ao cadastrar produto.",
     });
   }
-});
+  }
+);
 
-productsRoutes.put("/:id", async (req: AuthenticatedRequest, res) => {
+productsRoutes.put(
+  "/:id",
+  requireRoles("OWNER", "MANAGER", "STOCK"),
+  async (req: AuthenticatedRequest, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({
@@ -220,8 +235,8 @@ productsRoutes.put("/:id", async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const parsedSalePrice = Number(salePrice);
-    const parsedCost = Number(cost || 0);
+    const parsedSalePrice = parseMoney(salePrice);
+    const parsedCost = parseMoney(cost || 0);
     const parsedStock = Number(stock || 0);
     const parsedMinStock = Number(minStock || 0);
 
@@ -230,21 +245,21 @@ productsRoutes.put("/:id", async (req: AuthenticatedRequest, res) => {
 
     const parsedOnlinePrice = parsedUseSameOnlinePrice
       ? parsedSalePrice
-      : Number(onlinePrice || 0);
+      : parseMoney(onlinePrice || 0);
 
-    if (Number.isNaN(parsedSalePrice) || parsedSalePrice < 0) {
+    if (parsedSalePrice === null) {
       return res.status(400).json({
         message: "Preço de venda inválido.",
       });
     }
 
-    if (Number.isNaN(parsedCost) || parsedCost < 0) {
+    if (parsedCost === null) {
       return res.status(400).json({
         message: "Custo inválido.",
       });
     }
 
-    if (Number.isNaN(parsedOnlinePrice) || parsedOnlinePrice < 0) {
+    if (parsedOnlinePrice === null) {
       return res.status(400).json({
         message: "Preço online inválido.",
       });
@@ -302,13 +317,23 @@ productsRoutes.put("/:id", async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     console.error(error);
 
+    if (isUniqueConstraintError(error)) {
+      return res.status(409).json({
+        message: "Já existe um produto com este SKU ou código de barras.",
+      });
+    }
+
     return res.status(500).json({
       message: "Erro ao editar produto.",
     });
   }
-});
+  }
+);
 
-productsRoutes.delete("/:id", async (req: AuthenticatedRequest, res) => {
+productsRoutes.delete(
+  "/:id",
+  requireRoles("OWNER", "MANAGER", "STOCK"),
+  async (req: AuthenticatedRequest, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({
@@ -348,4 +373,14 @@ productsRoutes.delete("/:id", async (req: AuthenticatedRequest, res) => {
         "Erro ao excluir produto. Se este produto já tiver vendas, tente desativá-lo em vez de excluir.",
     });
   }
-});
+  }
+);
+
+function isUniqueConstraintError(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002"
+  );
+}

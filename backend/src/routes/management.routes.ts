@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import {
   authMiddleware,
   AuthenticatedRequest,
+  requireRoles,
 } from "../middlewares/authMiddleware";
 
 export const managementRoutes = Router();
@@ -14,7 +15,7 @@ function marketId(req: AuthenticatedRequest) {
   return req.user?.marketId || "";
 }
 
-managementRoutes.get("/categories", async (req: AuthenticatedRequest, res) => {
+managementRoutes.get("/categories", requireRoles("OWNER", "MANAGER", "STOCK"), async (req: AuthenticatedRequest, res) => {
   const categories = await prisma.category.findMany({
     where: { marketId: marketId(req) },
     orderBy: { name: "asc" },
@@ -22,7 +23,7 @@ managementRoutes.get("/categories", async (req: AuthenticatedRequest, res) => {
   return res.json({ categories });
 });
 
-managementRoutes.post("/categories", async (req: AuthenticatedRequest, res) => {
+managementRoutes.post("/categories", requireRoles("OWNER", "MANAGER", "STOCK"), async (req: AuthenticatedRequest, res) => {
   const name = String(req.body.name || "").trim();
   const color = String(req.body.color || "#3b82f6").trim();
 
@@ -42,6 +43,7 @@ managementRoutes.post("/categories", async (req: AuthenticatedRequest, res) => {
 
 managementRoutes.delete(
   "/categories/:id",
+  requireRoles("OWNER", "MANAGER", "STOCK"),
   async (req: AuthenticatedRequest, res) => {
     const result = await prisma.category.deleteMany({
       where: { id: req.params.id, marketId: marketId(req) },
@@ -53,7 +55,7 @@ managementRoutes.delete(
   }
 );
 
-managementRoutes.get("/customers", async (req: AuthenticatedRequest, res) => {
+managementRoutes.get("/customers", requireRoles("OWNER", "MANAGER"), async (req: AuthenticatedRequest, res) => {
   const customers = await prisma.customer.findMany({
     where: { marketId: marketId(req) },
     orderBy: { createdAt: "desc" },
@@ -61,7 +63,7 @@ managementRoutes.get("/customers", async (req: AuthenticatedRequest, res) => {
   return res.json({ customers });
 });
 
-managementRoutes.post("/customers", async (req: AuthenticatedRequest, res) => {
+managementRoutes.post("/customers", requireRoles("OWNER", "MANAGER"), async (req: AuthenticatedRequest, res) => {
   const name = String(req.body.name || "").trim();
   if (!name) {
     return res.status(400).json({ message: "Nome obrigatório." });
@@ -81,6 +83,7 @@ managementRoutes.post("/customers", async (req: AuthenticatedRequest, res) => {
 
 managementRoutes.delete(
   "/customers/:id",
+  requireRoles("OWNER", "MANAGER"),
   async (req: AuthenticatedRequest, res) => {
     const result = await prisma.customer.deleteMany({
       where: { id: req.params.id, marketId: marketId(req) },
@@ -92,7 +95,7 @@ managementRoutes.delete(
   }
 );
 
-managementRoutes.get("/employees", async (req: AuthenticatedRequest, res) => {
+managementRoutes.get("/employees", requireRoles("OWNER", "MANAGER"), async (req: AuthenticatedRequest, res) => {
   const employees = await prisma.employee.findMany({
     where: { marketId: marketId(req) },
     orderBy: { createdAt: "desc" },
@@ -108,7 +111,7 @@ managementRoutes.get("/employees", async (req: AuthenticatedRequest, res) => {
   return res.json({ employees });
 });
 
-managementRoutes.post("/employees", async (req: AuthenticatedRequest, res) => {
+managementRoutes.post("/employees", requireRoles("OWNER", "MANAGER"), async (req: AuthenticatedRequest, res) => {
   const name = String(req.body.name || "").trim();
   const role = req.body.role === "MANAGER" ? "MANAGER" : "CASHIER";
   const pin = req.body.pin ? String(req.body.pin).trim() : null;
@@ -143,6 +146,7 @@ managementRoutes.post("/employees", async (req: AuthenticatedRequest, res) => {
 
 managementRoutes.patch(
   "/employees/:id/status",
+  requireRoles("OWNER", "MANAGER"),
   async (req: AuthenticatedRequest, res) => {
     const current = await prisma.employee.findFirst({
       where: { id: req.params.id, marketId: marketId(req) },
@@ -168,6 +172,7 @@ managementRoutes.patch(
 
 managementRoutes.delete(
   "/employees/:id",
+  requireRoles("OWNER", "MANAGER"),
   async (req: AuthenticatedRequest, res) => {
     const result = await prisma.employee.deleteMany({
       where: { id: req.params.id, marketId: marketId(req) },
@@ -206,6 +211,7 @@ managementRoutes.get(
 
 managementRoutes.patch(
   "/payment-settings/:type",
+  requireRoles("OWNER", "MANAGER"),
   async (req: AuthenticatedRequest, res) => {
     const type = String(req.params.type || "").toUpperCase();
     if (!defaultPayments.includes(type)) {
@@ -235,7 +241,7 @@ managementRoutes.get("/market", async (req: AuthenticatedRequest, res) => {
   return res.json({ market });
 });
 
-managementRoutes.put("/market", async (req: AuthenticatedRequest, res) => {
+managementRoutes.put("/market", requireRoles("OWNER"), async (req: AuthenticatedRequest, res) => {
   const name = String(req.body.name || "").trim();
   if (!name) {
     return res.status(400).json({ message: "Nome do mercado é obrigatório." });
@@ -262,6 +268,7 @@ managementRoutes.put("/market", async (req: AuthenticatedRequest, res) => {
 
 managementRoutes.patch(
   "/stock/:productId",
+  requireRoles("OWNER", "MANAGER", "STOCK"),
   async (req: AuthenticatedRequest, res) => {
     const product = await prisma.product.findFirst({
       where: { id: req.params.productId, marketId: marketId(req) },

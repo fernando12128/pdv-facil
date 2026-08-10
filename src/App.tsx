@@ -16,6 +16,7 @@ import OnlineOrdersPage from "./pages/Management/OnlineOrdersPage";
 import CashClosingsPage from "./pages/Management/CashClosingsPage";
 import type { AppPage } from "./components/Sidebar/Sidebar";
 import { meRequest } from "./services/authService";
+import { canAccessPage, getStoredRole, type UserRole } from "./lib/accessControl";
 
 const pagePaths: Record<AppPage, string> = {
   home: "/",
@@ -43,6 +44,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentPage, setCurrentPage] = useState<AppPage>(pageFromPath);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [userRole, setUserRole] = useState<UserRole>(getStoredRole);
 
   useEffect(() => {
     async function checkLoggedUser() {
@@ -53,7 +55,10 @@ export default function App() {
         return;
       }
       try {
-        await meRequest(token);
+        const session = await meRequest(token);
+        const role = session.user.role as UserRole;
+        localStorage.setItem("pdv_facil_role", role);
+        setUserRole(role);
         setIsLoggedIn(true);
         if (window.location.pathname === "/auth") {
           window.history.replaceState({}, "", "/");
@@ -76,13 +81,16 @@ export default function App() {
   }, []);
 
   function navigate(page: AppPage) {
-    setCurrentPage(page);
-    window.history.pushState({}, "", pagePaths[page]);
+    const destination = canAccessPage(userRole, page) ? page : "home";
+    setCurrentPage(destination);
+    window.history.pushState({}, "", pagePaths[destination]);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function handleLoginSuccess(token: string) {
+  function handleLoginSuccess(token: string, role: UserRole = "OWNER") {
     localStorage.setItem("pdv_facil_token", token);
+    localStorage.setItem("pdv_facil_role", role);
+    setUserRole(role);
     setIsLoggedIn(true);
     setCurrentPage("home");
     window.history.replaceState({}, "", "/");
@@ -90,6 +98,7 @@ export default function App() {
 
   function handleLogout() {
     localStorage.removeItem("pdv_facil_token");
+    localStorage.removeItem("pdv_facil_role");
     setIsLoggedIn(false);
     setCurrentPage("home");
     window.history.replaceState({}, "", "/auth");
@@ -97,7 +106,9 @@ export default function App() {
 
   if (isLoadingAuth) return <div className="empty-state" style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>Carregando...</div>;
   if (!isLoggedIn) return <AuthPage onLogin={handleLoginSuccess} />;
-  if (currentPage === "home") return <HomePage onNavigate={navigate} />;
+  if (currentPage === "home" || !canAccessPage(userRole, currentPage)) {
+    return <HomePage onNavigate={navigate} role={userRole} />;
+  }
 
   const props = { onLogout: handleLogout, onNavigate: navigate };
   const pages: Record<Exclude<AppPage, "home">, ReactNode> = {
@@ -116,5 +127,5 @@ export default function App() {
     settings: <SettingsPage {...props} />,
   };
 
-  return pages[currentPage as Exclude<AppPage, "home">] || <HomePage onNavigate={navigate} />;
+  return pages[currentPage as Exclude<AppPage, "home">] || <HomePage onNavigate={navigate} role={userRole} />;
 }

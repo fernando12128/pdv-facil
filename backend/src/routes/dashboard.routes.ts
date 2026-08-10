@@ -3,13 +3,14 @@ import { prisma } from "../lib/prisma";
 import {
   authMiddleware,
   AuthenticatedRequest,
+  requireRoles,
 } from "../middlewares/authMiddleware";
 
 export const dashboardRoutes = Router();
 
 dashboardRoutes.use(authMiddleware);
 
-dashboardRoutes.get("/", async (req: AuthenticatedRequest, res) => {
+dashboardRoutes.get("/", requireRoles("OWNER", "MANAGER", "STOCK"), async (req: AuthenticatedRequest, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({
