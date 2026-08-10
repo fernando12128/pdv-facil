@@ -35,17 +35,19 @@ model Market {
   ownerId String @unique
   owner   User   @relation("MarketOwner", fields: [ownerId], references: [id])
 
-  users           User[]
-  products        Product[]
-  sales           ProductSale[]
-  cashMovements   CashMovement[]
-  cashSessions    CashSession[]
-  categories      Category[]
-  customers       Customer[]
-  employees       Employee[]
-  paymentSettings PaymentSetting[]
-  onlineOrders    OnlineOrder[]
+  users                  User[]
+  products               Product[]
+  sales                  ProductSale[]
+  cashMovements          CashMovement[]
+  cashSessions           CashSession[]
+  categories             Category[]
+  customers              Customer[]
+  employees              Employee[]
+  paymentSettings        PaymentSetting[]
+  onlineOrders           OnlineOrder[]
+  cashClosingCorrections CashClosingCorrection[]
 }
+
 enum UserRole {
   OWNER
   MANAGER
@@ -54,14 +56,14 @@ enum UserRole {
 }
 
 model Product {
-  id        String   @id @default(uuid())
-  marketId  String
+  id       String @id @default(uuid())
+  marketId String
 
-  name      String
-  sku       String?
-  barcode   String?
-  category  String?
-  brand     String?
+  name     String
+  sku      String?
+  barcode  String?
+  category String?
+  brand    String?
 
   isActive Boolean @default(true)
 
@@ -135,13 +137,13 @@ enum SaleStatus {
 }
 
 model CashMovement {
-  id        String           @id @default(uuid())
-  marketId  String
-  userId    String
-  type      CashMovementType
-  amount    Float
-  note      String?
-  createdAt DateTime         @default(now())
+  id            String           @id @default(uuid())
+  marketId      String
+  userId        String
+  type          CashMovementType
+  amount        Float
+  note          String?
+  createdAt     DateTime         @default(now())
   cashSessionId String?
 
   market      Market       @relation(fields: [marketId], references: [id])
@@ -179,13 +181,44 @@ model CashSession {
   status            CashSessionStatus @default(OPEN)
   openedAt          DateTime          @default(now())
   closedAt          DateTime?
+  revision          Int               @default(0)
 
-  market    Market         @relation(fields: [marketId], references: [id])
-  movements CashMovement[]
-  sales     ProductSale[]
+  market      Market                  @relation(fields: [marketId], references: [id])
+  movements   CashMovement[]
+  sales       ProductSale[]
+  corrections CashClosingCorrection[]
 
   @@index([marketId])
   @@index([status])
+}
+
+model CashClosingCorrection {
+  id                      String   @id @default(uuid())
+  marketId                String
+  cashSessionId           String
+  authorizedManagerId     String?
+  authorizedManagerName   String
+  requestedByUserId       String
+  requestedByName         String
+  previousClosingAmount   Float
+  correctedClosingAmount  Float
+  previousDifference      Float
+  correctedDifference     Float
+  previousClosingStatus   String?
+  correctedClosingStatus  String
+  previousPaymentSummary  Json
+  correctedPaymentSummary Json
+  reason                  String
+  note                    String?
+  createdAt               DateTime @default(now())
+
+  market            Market      @relation(fields: [marketId], references: [id])
+  cashSession       CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+  authorizedManager Employee?   @relation(fields: [authorizedManagerId], references: [id], onDelete: SetNull)
+
+  @@index([marketId])
+  @@index([cashSessionId, createdAt])
+  @@index([authorizedManagerId])
 }
 
 enum CashSessionStatus {
@@ -232,7 +265,8 @@ model Employee {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  market Market @relation(fields: [marketId], references: [id])
+  market                 Market                  @relation(fields: [marketId], references: [id])
+  cashClosingCorrections CashClosingCorrection[]
 
   @@index([marketId])
 }
