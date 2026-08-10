@@ -50,12 +50,33 @@ export type CashSession = {
   finalNote?: string | null;
   countHistory?: number[] | null;
   paymentSummary?: PaymentReconciliation[] | null;
+  revision?: number;
+  corrections?: CashClosingCorrection[];
   status: "OPEN" | "CLOSED";
   openedAt: string;
   closedAt?: string | null;
   movements?: CashMovement[];
   sales?: Sale[];
   summary?: CashSessionSummary;
+};
+
+export type CashClosingCorrection = {
+  id: string;
+  authorizedManagerId?: string | null;
+  authorizedManagerName: string;
+  requestedByUserId: string;
+  requestedByName: string;
+  previousClosingAmount: number;
+  correctedClosingAmount: number;
+  previousDifference: number;
+  correctedDifference: number;
+  previousClosingStatus?: string | null;
+  correctedClosingStatus: string;
+  previousPaymentSummary: PaymentReconciliation[];
+  correctedPaymentSummary: PaymentReconciliation[];
+  reason: string;
+  note?: string | null;
+  createdAt: string;
 };
 
 export type CloseCashSessionData = {
@@ -111,4 +132,38 @@ export function closeCashSession(id: string, data: CloseCashSessionData) {
     token: token(),
     body: data,
   });
+}
+
+export function authorizeCashClosingCorrection(
+  id: string,
+  data: { managerName: string; pin: string }
+) {
+  return apiRequest<{
+    authorizationToken: string;
+    manager: { id: string; name: string };
+    expiresInSeconds: number;
+  }>(`/cash-sessions/${id}/authorize-correction`, {
+    method: "POST",
+    token: token(),
+    body: data,
+  });
+}
+
+export function correctCashClosing(
+  id: string,
+  data: {
+    authorizationToken: string;
+    correctedPayments: Record<string, number>;
+    reason: string;
+    note?: string;
+  }
+) {
+  return apiRequest<{ session: CashSession }>(
+    `/cash-sessions/${id}/correct`,
+    {
+      method: "PATCH",
+      token: token(),
+      body: data,
+    }
+  );
 }
