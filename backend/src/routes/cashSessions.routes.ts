@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { Router } from "express";
+import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
+import {
+  signCashCorrectionToken,
+  verifyCashCorrectionToken,
+} from "../lib/jwt";
 import {
   authMiddleware,
   AuthenticatedRequest,
@@ -60,6 +65,7 @@ async function getSessionDetails(sessionId: string, marketId: string) {
     where: { id: sessionId, marketId },
     include: {
       movements: { orderBy: { createdAt: "asc" } },
+      corrections: { orderBy: { createdAt: "asc" } },
     },
   });
 
@@ -192,11 +198,290 @@ cashSessionsRoutes.get("/current", async (req: AuthenticatedRequest, res) => {
 cashSessionsRoutes.get("/history", async (req: AuthenticatedRequest, res) => {
   const sessions = await prisma.cashSession.findMany({
     where: { marketId: req.user!.marketId, status: "CLOSED" },
+    include: {
+      corrections: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+    },
     orderBy: { closedAt: "desc" },
     take: 50,
   });
   return res.json({ sessions });
 });
+
+cashSessionsRoutes.post(
+  "/:id/authorize-correction",
+  async (req: AuthenticatedRequest, res) => {
+    const sessionId = String(req.params.id);
+    const session = await prisma.cashSession.findFirst({
+      where: {
+        id: sessionId,
+        marketId: req.user!.marketId,
+        status: "CLOSED",
+      },
+      select: { id: true, revision: true },
+    });
+
+    if (!session) {
+      return res.status(404).json({ message: "Fechamento não encontrado." });
+    }
+
+    const managerName = String(req.body.managerName || "").trim();
+    const pin = String(req.body.pin || "").trim();
+    if (!managerName || !/^\d{4}$/.test(pin)) {
+      return res.status(401).json({
+        message: "Usuário do gerente ou PIN inválido.",
+      });
+    }
+
+    const managers = await prisma.employee.findMany({
+      where: {
+        marketId: req.user!.marketId,
+        role: "MANAGER",
+        isActive: true,
+      },
+    });
+    const normalizedName = managerName.toLocaleLowerCase("pt-BR");
+    let manager: (typeof managers)[number] | null = null;
+    for (const employee of managers) {
+      if (
+        employee.name.trim().toLocaleLowerCase("pt-BR") !== normalizedName ||
+        !employee.pin
+      ) {
+        continue;
+      }
+      const pinMatches = employee.pin.startsWith("$2")
+        ? await bcrypt.compare(pin, employee.pin)
+        : employee.pin === pin;
+      if (pinMatches) {
+        manager = employee;
+        if (!employee.pin.startsWith("$2")) {
+          await prisma.employee.update({
+            where: { id: employee.id },
+            data: { pin: await bcrypt.hash(pin, 10) },
+          });
+        }
+        break;
+      }
+    }
+
+    if (!manager) {
+      return res.status(401).json({
+        message: "Usuário do gerente ou PIN inválido.",
+      });
+    }
+
+    const authorizationToken = signCashCorrectionToken({
+      kind: "CASH_CLOSING_CORRECTION",
+      marketId: req.user!.marketId,
+      sessionId,
+      managerId: manager.id,
+      managerName: manager.name,
+      requestedByUserId: req.user!.userId,
+      authorizedRevision: session.revision,
+    });
+
+    return res.json({
+      authorizationToken,
+      manager: { id: manager.id, name: manager.name },
+      expiresInSeconds: 600,
+    });
+  }
+);
+
+cashSessionsRoutes.patch(
+  "/:id/correct",
+  async (req: AuthenticatedRequest, res) => {
+    const sessionId = String(req.params.id);
+    const reason = String(req.body.reason || "").trim();
+    const note = String(req.body.note || "").trim();
+
+    if (!reason) {
+      return res.status(400).json({
+        message: "Informe o motivo da correção.",
+      });
+    }
+    if (reason === "Outro" && !note) {
+      return res.status(400).json({
+        message: "Descreva o motivo da correção.",
+      });
+    }
+
+    let authorization;
+    try {
+      authorization = verifyCashCorrectionToken(
+        String(req.body.authorizationToken || "")
+      );
+    } catch {
+      return res.status(401).json({
+        message: "A autorização do gerente expirou. Autorize novamente.",
+      });
+    }
+
+    if (
+      authorization.kind !== "CASH_CLOSING_CORRECTION" ||
+      authorization.marketId !== req.user!.marketId ||
+      authorization.sessionId !== sessionId ||
+      authorization.requestedByUserId !== req.user!.userId
+    ) {
+      return res.status(403).json({
+        message: "Esta autorização não pode corrigir este fechamento.",
+      });
+    }
+
+    const manager = await prisma.employee.findFirst({
+      where: {
+        id: authorization.managerId,
+        marketId: req.user!.marketId,
+        role: "MANAGER",
+        isActive: true,
+      },
+    });
+    if (!manager) {
+      return res.status(403).json({
+        message: "O gerente autorizado não está mais ativo.",
+      });
+    }
+
+    const details = await getSessionDetails(sessionId, req.user!.marketId);
+    if (!details || details.status !== "CLOSED") {
+      return res.status(404).json({ message: "Fechamento não encontrado." });
+    }
+    if (details.revision !== authorization.authorizedRevision) {
+      return res.status(409).json({
+        message:
+          "Este fechamento mudou depois da autorização. Revise os dados e autorize novamente.",
+      });
+    }
+
+    const currentPayments = Array.isArray(details.paymentSummary)
+      ? (details.paymentSummary as unknown as PaymentLine[])
+      : details.summary.paymentMethods;
+    if (!currentPayments.length) {
+      return res.status(400).json({
+        message: "O fechamento não possui valores para corrigir.",
+      });
+    }
+
+    const rawCorrectedPayments = req.body.correctedPayments;
+    if (
+      !rawCorrectedPayments ||
+      typeof rawCorrectedPayments !== "object" ||
+      Array.isArray(rawCorrectedPayments)
+    ) {
+      return res.status(400).json({
+        message: "Informe os valores corrigidos.",
+      });
+    }
+    const correctedPayments = parseConfirmedPayments(rawCorrectedPayments);
+    const missingPayment = currentPayments.find(
+      (payment) => correctedPayments[payment.method] === undefined
+    );
+    if (missingPayment) {
+      return res.status(400).json({
+        message: `Informe o valor corrigido de ${missingPayment.method}.`,
+      });
+    }
+    const newPaymentSummary = currentPayments.map((payment) => {
+      const confirmed = correctedPayments[payment.method]!;
+      return {
+        ...payment,
+        confirmed: roundMoney(confirmed),
+        difference: roundMoney(confirmed - payment.expected),
+      };
+    });
+
+    const cashPayment = newPaymentSummary.find((payment) =>
+      isCashPayment(payment.method)
+    );
+    if (!cashPayment || cashPayment.confirmed === null) {
+      return res.status(400).json({
+        message: "O valor corrigido em dinheiro é obrigatório.",
+      });
+    }
+
+    const correctedDifference = roundMoney(
+      newPaymentSummary.reduce(
+        (sum, payment) => sum + (payment.difference || 0),
+        0
+      )
+    );
+    const correctedStatus =
+      Math.abs(correctedDifference) < 0.01
+        ? "Fechado sem divergências"
+        : "Fechado com divergência justificada";
+    const requestedBy = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { name: true },
+    });
+
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const updated = await tx.cashSession.updateMany({
+          where: {
+            id: details.id,
+            marketId: req.user!.marketId,
+            status: "CLOSED",
+            revision: details.revision,
+          },
+          data: {
+            closingAmount: cashPayment.confirmed,
+            difference: correctedDifference,
+            closingStatus: correctedStatus,
+            paymentSummary: newPaymentSummary,
+            revision: { increment: 1 },
+          },
+        });
+
+        if (updated.count !== 1) {
+          throw new Error("CASH_CLOSING_CHANGED");
+        }
+
+        await tx.cashClosingCorrection.create({
+          data: {
+            marketId: req.user!.marketId,
+            cashSessionId: details.id,
+            authorizedManagerId: manager.id,
+            authorizedManagerName: manager.name,
+            requestedByUserId: req.user!.userId,
+            requestedByName: requestedBy?.name || "Usuário",
+            previousClosingAmount: details.closingAmount || 0,
+            correctedClosingAmount: cashPayment.confirmed,
+            previousDifference: details.difference || 0,
+            correctedDifference,
+            previousClosingStatus: details.closingStatus,
+            correctedClosingStatus: correctedStatus,
+            previousPaymentSummary: currentPayments,
+            correctedPaymentSummary: newPaymentSummary,
+            reason,
+            note: note || null,
+          },
+        });
+
+        return tx.cashSession.findUnique({
+          where: { id: details.id },
+          include: {
+            corrections: { orderBy: { createdAt: "asc" } },
+          },
+        });
+      });
+
+      return res.json({ session: result });
+    } catch (error) {
+      if (error instanceof Error && error.message === "CASH_CLOSING_CHANGED") {
+        return res.status(409).json({
+          message:
+            "Este fechamento foi corrigido em outro dispositivo. Recarregue os dados antes de continuar.",
+        });
+      }
+      console.error(error);
+      return res.status(500).json({
+        message: "Não foi possível registrar a correção do fechamento.",
+      });
+    }
+  }
+);
 
 cashSessionsRoutes.get(
   "/:id/summary",
