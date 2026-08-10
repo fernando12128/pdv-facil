@@ -7,7 +7,9 @@ import {
   Eye,
   FileText,
   Info,
+  History,
   LockKeyhole,
+  PencilLine,
   Printer,
   RefreshCcw,
   Search,
@@ -34,6 +36,9 @@ type Props = {
 type DetailProps = {
   sessionId: string;
   onClose: () => void;
+  onCorrect?: (session: CashSession) => void;
+  refreshKey?: number;
+  autoPrint?: boolean;
 };
 
 const brl = (value: number) =>
@@ -176,9 +181,11 @@ function SaleDetails({
 function ClosingReadOnly({
   session,
   onPrint,
+  onCorrect,
 }: {
   session: CashSession;
   onPrint: () => void;
+  onCorrect?: () => void;
 }) {
   const summary = session.summary;
   if (!summary) return null;
@@ -318,7 +325,57 @@ function ClosingReadOnly({
         </section>
       )}
 
+      {!!session.corrections?.length && (
+        <section className="closing-corrections-box">
+          <h3><History /> Histórico de correções</h3>
+          <p>
+            O fechamento original foi preservado. As alterações abaixo fazem
+            parte do comprovante e não podem ser apagadas.
+          </p>
+          <div className="closing-correction-timeline">
+            {session.corrections.map((correction, index) => (
+              <article key={correction.id}>
+                <div className="closing-correction-heading">
+                  <strong>Correção {index + 1}</strong>
+                  <span>{formatDate(correction.createdAt)}</span>
+                </div>
+                <InfoGrid
+                  rows={[
+                    {
+                      label: "Gerente responsável",
+                      value: correction.authorizedManagerName,
+                    },
+                    {
+                      label: "Solicitada por",
+                      value: correction.requestedByName,
+                    },
+                    {
+                      label: "Valor contado",
+                      value: `${brl(correction.previousClosingAmount)} → ${brl(correction.correctedClosingAmount)}`,
+                    },
+                    {
+                      label: "Diferença geral",
+                      value: `${differenceText(correction.previousDifference)} → ${differenceText(correction.correctedDifference)}`,
+                    },
+                    { label: "Motivo", value: correction.reason },
+                    {
+                      label: "Observação",
+                      value: correction.note || "Não informada",
+                    },
+                  ]}
+                />
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="closing-readonly-actions">
+        {onCorrect && (
+          <button className="secondary" onClick={onCorrect}>
+            <PencilLine /> Corrigir
+          </button>
+        )}
         <button className="secondary" onClick={onPrint}>
           <Printer /> Imprimir
         </button>
@@ -330,13 +387,21 @@ function ClosingReadOnly({
 export function CashClosingDetailsModal({
   sessionId,
   onClose,
+  onCorrect,
+  refreshKey = 0,
+  autoPrint = false,
 }: DetailProps) {
   const [session, setSession] = useState<CashSession | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     getCashSessionSummary(sessionId)
-      .then((result) => setSession(result.session))
+      .then((result) => {
+        setSession(result.session);
+        if (autoPrint) {
+          window.setTimeout(() => window.print(), 100);
+        }
+      })
       .catch((value) =>
         setError(
           value instanceof Error
@@ -344,7 +409,7 @@ export function CashClosingDetailsModal({
             : "Erro ao carregar o fechamento."
         )
       );
-  }, [sessionId]);
+  }, [autoPrint, sessionId, refreshKey]);
 
   return (
     <div className="closing-backdrop">
@@ -354,14 +419,18 @@ export function CashClosingDetailsModal({
         </button>
         <header className="closing-modal-header">
           <h2>
-            Fechamento {session?.closingCode || ""}{" "}
-            <small>(somente leitura)</small>
+            Fechamento {session?.closingCode || ""}
+            {!onCorrect && <small>(somente leitura)</small>}
           </h2>
         </header>
         {error && <p className="closing-error">{error}</p>}
         {!session && !error && <div className="closing-loading">Carregando...</div>}
         {session && (
-          <ClosingReadOnly session={session} onPrint={() => window.print()} />
+          <ClosingReadOnly
+            session={session}
+            onPrint={() => window.print()}
+            onCorrect={onCorrect ? () => onCorrect(session) : undefined}
+          />
         )}
       </section>
     </div>
