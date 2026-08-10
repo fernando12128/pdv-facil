@@ -4,6 +4,8 @@ import {
   authMiddleware,
   AuthenticatedRequest,
 } from "../middlewares/authMiddleware";
+import { parseMoney, roundMoney } from "../lib/money";
+import { normalizePaymentMethod } from "../lib/paymentMethods";
 
 export const salesRoutes = Router();
 
@@ -103,9 +105,10 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
 
     const { customerName, paymentMethod, discount, items } = req.body;
 
-    if (!paymentMethod) {
+    const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
+    if (!normalizedPaymentMethod) {
       return res.status(400).json({
-        message: "Forma de pagamento é obrigatória.",
+        message: "Forma de pagamento inválida.",
       });
     }
 
@@ -123,15 +126,27 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const parsedDiscount = Number(discount || 0);
+    const parsedDiscount = parseMoney(discount || 0);
 
-    if (Number.isNaN(parsedDiscount) || parsedDiscount < 0) {
+    if (parsedDiscount === null) {
       return res.status(400).json({
         message: "Desconto inválido.",
       });
     }
 
     const sale = await prisma.$transaction(async (tx) => {
+      const paymentSetting = await tx.paymentSetting.findUnique({
+        where: {
+          marketId_type: {
+            marketId: req.user!.marketId,
+            type: normalizedPaymentMethod,
+          },
+        },
+      });
+      if (paymentSetting?.isEnabled === false) {
+        throw new HttpError(400, "Esta forma de pagamento está desativada.");
+      }
+
       const activeSession = await tx.cashSession.findFirst({
         where: {
           marketId: req.user!.marketId,
@@ -172,6 +187,10 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
           throw new HttpError(404, "Produto não encontrado.");
         }
 
+        if (!product.isActive) {
+          throw new HttpError(400, `O produto "${product.name}" está inativo.`);
+        }
+
         if (item.quantity <= 0) {
           throw new HttpError(400, "Quantidade inválida.");
         }
@@ -183,7 +202,7 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
           );
         }
 
-        subtotal += product.salePrice * item.quantity;
+        subtotal = roundMoney(subtotal + roundMoney(product.salePrice * item.quantity));
       }
 
       if (parsedDiscount > subtotal) {
@@ -193,7 +212,7 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
         );
       }
 
-      const total = subtotal - parsedDiscount;
+      const total = roundMoney(subtotal - parsedDiscount);
 
       if (total <= 0) {
         throw new HttpError(
@@ -208,7 +227,7 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
           userId: req.user!.userId,
           cashSessionId: activeSession.id,
           customerName: customerName ? String(customerName).trim() : null,
-          paymentMethod: String(paymentMethod),
+          paymentMethod: normalizedPaymentMethod,
           discount: parsedDiscount,
           subtotal,
           total,
@@ -228,14 +247,17 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
             productId: product.id,
             productName: product.name,
             quantity: item.quantity,
-            unitPrice: product.salePrice,
-            total: product.salePrice * item.quantity,
+            unitPrice: roundMoney(product.salePrice),
+            total: roundMoney(product.salePrice * item.quantity),
           },
         });
 
-        await tx.product.update({
+        const updatedStock = await tx.product.updateMany({
           where: {
             id: product.id,
+            marketId: req.user!.marketId,
+            isActive: true,
+            ...(product.allowBackorder ? {} : { stock: { gte: item.quantity } }),
           },
           data: {
             stock: {
@@ -243,6 +265,9 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
             },
           },
         });
+        if (updatedStock.count !== 1) {
+          throw new HttpError(409, `O estoque de "${product.name}" mudou. Tente novamente.`);
+        }
       }
 
       const saleWithItems = await tx.productSale.findUnique({

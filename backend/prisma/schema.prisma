@@ -88,8 +88,11 @@ model Product {
 
   market    Market     @relation(fields: [marketId], references: [id])
   saleItems SaleItem[]
+  onlineOrderItems OnlineOrderItem[]
 
   @@index([marketId])
+  @@unique([marketId, sku])
+  @@unique([marketId, barcode])
 }
 
 model ProductSale {
@@ -161,6 +164,7 @@ enum CashMovementType {
 model CashSession {
   id                String            @id @default(uuid())
   marketId          String
+  openMarketId      String?           @unique
   userId            String
   operatorName      String?
   openingAmount     Float
@@ -321,14 +325,17 @@ model OnlineOrder {
 model OnlineOrderItem {
   id          String @id @default(uuid())
   orderId     String
+  productId   String?
   productName String
   quantity    Int
   unitPrice   Float
   total       Float
 
-  order OnlineOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   OnlineOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
+  @@index([productId])
 }
 
 enum OnlineOrderStatus {

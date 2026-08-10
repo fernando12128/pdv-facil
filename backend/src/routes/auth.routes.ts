@@ -100,6 +100,17 @@ authRoutes.post("/register", async (req, res) => {
   } catch (error) {
     console.error(error);
 
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      return res.status(409).json({
+        message: "Já existe uma conta com este email.",
+      });
+    }
+
     return res.status(500).json({
       message: "Erro ao criar conta.",
     });

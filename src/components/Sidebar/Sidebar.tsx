@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import "./Sidebar.css";
+import { canAccessPage, getStoredRole } from "../../lib/accessControl";
 
 export type AppPage =
   | "home"
@@ -85,16 +86,20 @@ export default function Sidebar({
   open = false,
   onClose,
 }: SidebarProps) {
+  const role = getStoredRole();
   function navigate(page: AppPage) {
     onNavigate(page);
     onClose?.();
   }
 
   function renderGroup(label: string, items: SidebarItem[]) {
+    const visibleItems = items.filter((item) => canAccessPage(role, item.id));
+    if (!visibleItems.length) return null;
+
     return (
       <div className="sidebar-group">
         <span className="sidebar-group-label">{label}</span>
-        {items.map((item) => (
+        {visibleItems.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -128,14 +133,16 @@ export default function Sidebar({
           </button>
         </div>
 
-        <button
-          type="button"
-          className="open-cashier-button"
-          onClick={() => navigate("pdv")}
-        >
-          <ShoppingCart />
-          <span>Abrir Caixa (PDV)</span>
-        </button>
+        {canAccessPage(role, "pdv") && (
+          <button
+            type="button"
+            className="open-cashier-button"
+            onClick={() => navigate("pdv")}
+          >
+            <ShoppingCart />
+            <span>Abrir Caixa (PDV)</span>
+          </button>
+        )}
 
         <nav className="app-sidebar-nav">
           {renderGroup("Operação", operationItems)}

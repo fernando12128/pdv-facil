@@ -10,6 +10,11 @@ import {
   authMiddleware,
   AuthenticatedRequest,
 } from "../middlewares/authMiddleware";
+import { parseMoney, roundMoney } from "../lib/money";
+import {
+  isCashPayment,
+  normalizePaymentMethod,
+} from "../lib/paymentMethods";
 
 export const cashSessionsRoutes = Router();
 
@@ -24,15 +29,6 @@ type PaymentLine = {
   difference: number | null;
 };
 
-function roundMoney(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
-function isCashPayment(method: string) {
-  const normalized = method.trim().toLowerCase();
-  return normalized === "dinheiro" || normalized === "cash";
-}
-
 function closingCode() {
   return `FC-${randomBytes(4).toString("hex").toUpperCase()}`;
 }
@@ -42,9 +38,10 @@ function parseConfirmedPayments(value: unknown): ConfirmedPayments {
 
   return Object.fromEntries(
     Object.entries(value).flatMap(([method, amount]) => {
-      const parsed = Number(amount);
-      return Number.isFinite(parsed) && parsed >= 0
-        ? [[method, roundMoney(parsed)]]
+      const parsed = parseMoney(amount);
+      const normalizedMethod = normalizePaymentMethod(method) || method;
+      return parsed !== null
+        ? [[normalizedMethod, parsed]]
         : [];
     })
   );
@@ -125,27 +122,26 @@ async function getSessionDetails(sessionId: string, marketId: string) {
 
   const paymentMap = new Map<string, { sales: number; expected: number }>();
   for (const sale of completedSales) {
-    const current = paymentMap.get(sale.paymentMethod) || {
+    const method = normalizePaymentMethod(sale.paymentMethod) || sale.paymentMethod;
+    const current = paymentMap.get(method) || {
       sales: 0,
       expected: 0,
     };
     current.sales += 1;
     current.expected = roundMoney(current.expected + sale.total);
-    paymentMap.set(sale.paymentMethod, current);
+    paymentMap.set(method, current);
   }
 
-  const cashEntry = Array.from(paymentMap.entries()).find(([method]) =>
-    isCashPayment(method)
-  );
-  const cashSales = cashEntry?.[1].expected || 0;
+  const cashEntry = paymentMap.get("CASH");
+  const cashSales = cashEntry?.expected || 0;
   const expectedCash = roundMoney(
     session.openingAmount + cashSales + supplies - withdrawals
   );
 
   if (cashEntry) {
-    cashEntry[1].expected = expectedCash;
+    cashEntry.expected = expectedCash;
   } else {
-    paymentMap.set("Dinheiro", { sales: 0, expected: expectedCash });
+    paymentMap.set("CASH", { sales: 0, expected: expectedCash });
   }
 
   const persistedSummary: PaymentLine[] | null = Array.isArray(
@@ -153,9 +149,39 @@ async function getSessionDetails(sessionId: string, marketId: string) {
   )
     ? (session.paymentSummary as unknown as PaymentLine[])
     : null;
+  const derivedPaymentMethods = Array.from(paymentMap.entries()).map(
+    ([method, value]) => ({
+      method,
+      sales: value.sales,
+      expected: value.expected,
+      confirmed: null,
+      difference: null,
+    })
+  );
+  const normalizedPersistedSummary = persistedSummary
+    ? derivedPaymentMethods.map((payment) => {
+        const persisted = persistedSummary.find(
+          (item) =>
+            (normalizePaymentMethod(item.method) || item.method) === payment.method
+        );
+        const confirmed = isCashPayment(payment.method)
+          ? session.closingAmount
+          : persisted?.confirmed;
+
+        return {
+          ...payment,
+          confirmed: confirmed ?? null,
+          difference:
+            confirmed === null || confirmed === undefined
+              ? null
+              : roundMoney(confirmed - payment.expected),
+        };
+      })
+    : null;
 
   return {
     ...session,
+    paymentSummary: normalizedPersistedSummary,
     sales,
     summary: {
       saleCount: completedSales.length,
@@ -174,14 +200,7 @@ async function getSessionDetails(sessionId: string, marketId: string) {
       withdrawals,
       cashSales,
       expectedCash,
-      paymentMethods: persistedSummary ||
-        Array.from(paymentMap.entries()).map(([method, value]) => ({
-          method,
-          sales: value.sales,
-          expected: value.expected,
-          confirmed: null,
-          difference: null,
-        })),
+      paymentMethods: normalizedPersistedSummary || derivedPaymentMethods,
     },
   };
 }
@@ -519,22 +538,31 @@ cashSessionsRoutes.post("/open", async (req: AuthenticatedRequest, res) => {
     return res.status(409).json({ message: "Já existe um caixa aberto." });
   }
 
-  const openingAmount = Number(req.body.openingAmount || 0);
-  if (Number.isNaN(openingAmount) || openingAmount < 0) {
+  const openingAmount = parseMoney(req.body.openingAmount || 0);
+  if (openingAmount === null) {
     return res.status(400).json({ message: "Valor inicial inválido." });
   }
 
-  const session = await prisma.cashSession.create({
-    data: {
-      marketId: req.user!.marketId,
-      userId: req.user!.userId,
-      operatorName: req.body.operatorName
-        ? String(req.body.operatorName).trim()
-        : null,
-      openingAmount: roundMoney(openingAmount),
-    },
-  });
-  return res.status(201).json({ session });
+  try {
+    const session = await prisma.cashSession.create({
+      data: {
+        marketId: req.user!.marketId,
+        openMarketId: req.user!.marketId,
+        userId: req.user!.userId,
+        operatorName: req.body.operatorName
+          ? String(req.body.operatorName).trim()
+          : null,
+        openingAmount,
+      },
+    });
+    return res.status(201).json({ session });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return res.status(409).json({ message: "Já existe um caixa aberto." });
+    }
+    console.error(error);
+    return res.status(500).json({ message: "Não foi possível abrir o caixa." });
+  }
 });
 
 cashSessionsRoutes.post(
@@ -548,8 +576,8 @@ cashSessionsRoutes.post(
       return res.status(404).json({ message: "Caixa aberto não encontrado." });
     }
 
-    const closingAmount = Number(req.body.closingAmount);
-    if (Number.isNaN(closingAmount) || closingAmount < 0) {
+    const closingAmount = parseMoney(req.body.closingAmount);
+    if (closingAmount === null) {
       return res.status(400).json({ message: "Valor final inválido." });
     }
 
@@ -605,15 +633,17 @@ cashSessionsRoutes.post(
     const code = closingCode();
     const closedAt = new Date();
 
-    const closedSession = await prisma.$transaction(async (tx) => {
-      const updated = await tx.cashSession.updateMany({
+    try {
+      const closedSession = await prisma.$transaction(async (tx) => {
+        const updated = await tx.cashSession.updateMany({
         where: {
           id: details.id,
           marketId: req.user!.marketId,
           status: "OPEN",
         },
-        data: {
-          status: "CLOSED",
+          data: {
+            status: "CLOSED",
+            openMarketId: null,
           closingAmount: roundMoney(closingAmount),
           expectedCash: details.summary.expectedCash,
           difference: totalDifference,
@@ -639,17 +669,35 @@ cashSessionsRoutes.post(
           paymentSummary,
           closedAt,
         },
+        });
+
+        if (updated.count !== 1) {
+          throw new Error("CASH_SESSION_ALREADY_CLOSED");
+        }
+
+        return tx.cashSession.findUnique({
+          where: { id: details.id },
+        });
       });
 
-      if (updated.count !== 1) {
-        throw new Error("CASH_SESSION_ALREADY_CLOSED");
+      return res.json({ session: closedSession });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "CASH_SESSION_ALREADY_CLOSED"
+      ) {
+        return res.status(409).json({
+          message: "Este caixa já foi fechado em outro dispositivo.",
+        });
       }
-
-      return tx.cashSession.findUnique({
-        where: { id: details.id },
-      });
-    });
-
-    return res.json({ session: closedSession });
+      console.error(error);
+      return res.status(500).json({ message: "Não foi possível fechar o caixa." });
+    }
   }
 );
+
+function isUniqueConstraintError(error: unknown) {
+  return Boolean(
+    error && typeof error === "object" && "code" in error && error.code === "P2002"
+  );
+}

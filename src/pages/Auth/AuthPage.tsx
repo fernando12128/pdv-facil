@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { loginRequest, registerRequest } from "../../services/authService";
 import "./AuthPage.css";
+import type { UserRole } from "../../lib/accessControl";
 
 type AuthMode = "login" | "register";
 
 type AuthPageProps = {
-  onLogin: (token: string) => void;
+  onLogin: (token: string, role: UserRole) => void;
 };
 
 export default function AuthPage({ onLogin }: AuthPageProps) {
@@ -31,7 +32,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
     try {
       if (isLogin) {
         const response = await loginRequest(email, password);
-        onLogin(response.token);
+        onLogin(response.token, response.user.role as UserRole);
         return;
       }
 
