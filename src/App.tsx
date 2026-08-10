@@ -13,6 +13,7 @@ import InventoryPage from "./pages/Management/InventoryPage";
 import PaymentsPage from "./pages/Management/PaymentsPage";
 import ReportsPage from "./pages/Management/ReportsPage";
 import OnlineOrdersPage from "./pages/Management/OnlineOrdersPage";
+import CashClosingsPage from "./pages/Management/CashClosingsPage";
 import type { AppPage } from "./components/Sidebar/Sidebar";
 import { meRequest } from "./services/authService";
 
@@ -26,6 +27,7 @@ const pagePaths: Record<AppPage, string> = {
   customers: "/admin/clientes",
   employees: "/admin/funcionarios",
   sales: "/admin/vendas",
+  "cash-closings": "/admin/fechamentos",
   "online-orders": "/admin/pedidos-online",
   payments: "/admin/pagamentos",
   reports: "/admin/relatorios",
@@ -107,6 +109,7 @@ export default function App() {
     customers: <CustomersPage {...props} />,
     employees: <EmployeesPage {...props} />,
     sales: <SalesPage {...props} />,
+    "cash-closings": <CashClosingsPage {...props} />,
     "online-orders": <OnlineOrdersPage {...props} />,
     payments: <PaymentsPage {...props} />,
     reports: <ReportsPage {...props} />,
