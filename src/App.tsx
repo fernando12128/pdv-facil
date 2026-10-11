@@ -11,6 +11,7 @@ import CustomersPage from "./pages/Management/CustomersPage";
 import EmployeesPage from "./pages/Management/EmployeesPage";
 import InventoryPage from "./pages/Management/InventoryPage";
 import PaymentsPage from "./pages/Management/PaymentsPage";
+import FinancePage from "./pages/Finance/FinancePage";
 import ReportsPage from "./pages/Management/ReportsPage";
 import OnlineOrdersPage from "./pages/Management/OnlineOrdersPage";
 import CashClosingsPage from "./pages/Management/CashClosingsPage";
@@ -30,6 +31,7 @@ const pagePaths: Record<AppPage, string> = {
   "cash-closings": "/admin/fechamentos",
   "online-orders": "/admin/pedidos-online",
   payments: "/admin/pagamentos",
+  finance: "/admin/financeiro",
   reports: "/admin/relatorios",
   settings: "/admin/configuracoes",
 };
@@ -112,6 +114,7 @@ export default function App() {
     "cash-closings": <CashClosingsPage {...props} />,
     "online-orders": <OnlineOrdersPage {...props} />,
     payments: <PaymentsPage {...props} />,
+    finance: <FinancePage {...props} />,
     reports: <ReportsPage {...props} />,
     settings: <SettingsPage {...props} />,
   };
