@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 
+import { financeRoutes } from "./routes/finance.routes";
 import { authRoutes } from "./routes/auth.routes";
 import { productsRoutes } from "./routes/products.routes";
 import { salesRoutes } from "./routes/sales.routes";
@@ -48,6 +49,7 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/auth", authRoutes);
+app.use("/finance", financeRoutes);
 app.use("/products", productsRoutes);
 app.use("/sales", salesRoutes);
 app.use("/cash-movements", cashMovementsRoutes);
