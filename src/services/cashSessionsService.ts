@@ -34,6 +34,7 @@ export type CashSessionSummary = {
 
 export type CashSession = {
   id: string;
+  registerKey?: string;
   operatorName?: string | null;
   openingAmount: number;
   closingAmount?: number | null;
@@ -89,8 +90,14 @@ export type CloseCashSessionData = {
   finalNote?: string;
 };
 
-export function getCurrentCashSession() {
-  return apiRequest<{ session: CashSession | null }>("/cash-sessions/current", {
+export function getCurrentCashSession(registerKey = "CAIXA-01") {
+  return apiRequest<{ session: CashSession | null }>(`/cash-sessions/current?registerKey=${encodeURIComponent(registerKey)}`, {
+    token: token(),
+  });
+}
+
+export function listOpenCashSessions() {
+  return apiRequest<{ sessions: Pick<CashSession, "id" | "registerKey" | "operatorName" | "openingAmount" | "openedAt">[] }>("/cash-sessions/open-sessions", {
     token: token(),
   });
 }
@@ -118,6 +125,7 @@ export function listCashSessionHistory() {
 export function openCashSession(data: {
   openingAmount: number;
   operatorName?: string;
+  registerKey?: string;
 }) {
   return apiRequest<{ session: CashSession }>("/cash-sessions/open", {
     method: "POST",

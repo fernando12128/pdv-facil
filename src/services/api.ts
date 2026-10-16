@@ -6,6 +6,7 @@ type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   token?: string | null;
+  headers?: Record<string, string>;
 };
 
 export async function apiRequest<T>(
@@ -14,6 +15,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
+    ...options.headers,
   };
 
   if (options.token) {

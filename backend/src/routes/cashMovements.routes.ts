@@ -13,6 +13,10 @@ const movementTypes = ["SUPPLY", "WITHDRAWAL"] as const;
 
 type CashMovementTypeInput = (typeof movementTypes)[number];
 
+class HttpError extends Error {
+  constructor(public statusCode: number, message: string) { super(message); }
+}
+
 cashMovementsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
   try {
     if (!req.user) {
@@ -61,15 +65,19 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || Math.round(parsedAmount * 100) !== parsedAmount * 100) {
       return res.status(400).json({
         message: "Informe um valor maior que zero.",
       });
     }
 
+    if (!cashSessionId || typeof cashSessionId !== "string") {
+      return res.status(400).json({ message: "Informe o caixa aberto do movimento." });
+    }
+
     const activeSession = await prisma.cashSession.findFirst({
       where: {
-        id: cashSessionId ? String(cashSessionId) : undefined,
+        id: cashSessionId,
         marketId: req.user.marketId,
         status: "OPEN",
       },
@@ -84,15 +92,35 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       });
     }
 
-    const movement = await prisma.cashMovement.create({
-      data: {
-        marketId: req.user.marketId,
-        userId: req.user.userId,
-        type: normalizedType,
-        amount: parsedAmount,
-        note: note ? String(note).trim() : null,
-        cashSessionId: activeSession.id,
-      },
+    const movement = await prisma.$transaction(async (tx) => {
+      if (normalizedType === "WITHDRAWAL") {
+        const [cashSales, supplies, withdrawals] = await Promise.all([
+          tx.productSale.aggregate({
+            where: { marketId: req.user!.marketId, cashSessionId: activeSession.id, status: "COMPLETED", paymentMethod: { in: ["CASH", "Dinheiro"] } },
+            _sum: { total: true },
+          }),
+          tx.cashMovement.aggregate({
+            where: { marketId: req.user!.marketId, cashSessionId: activeSession.id, type: "SUPPLY" },
+            _sum: { amount: true },
+          }),
+          tx.cashMovement.aggregate({
+            where: { marketId: req.user!.marketId, cashSessionId: activeSession.id, type: "WITHDRAWAL" },
+            _sum: { amount: true },
+          }),
+        ]);
+        const available = Math.round((activeSession.openingAmount + (cashSales._sum.total || 0) + (supplies._sum.amount || 0) - (withdrawals._sum.amount || 0)) * 100) / 100;
+        if (parsedAmount > available) throw new HttpError(400, "A sangria não pode superar o dinheiro disponível no caixa.");
+      }
+      return tx.cashMovement.create({
+        data: {
+          marketId: req.user!.marketId,
+          userId: req.user!.userId,
+          type: normalizedType,
+          amount: Math.round(parsedAmount * 100) / 100,
+          note: note ? String(note).trim() : null,
+          cashSessionId: activeSession.id,
+        },
+      });
     });
 
     return res.status(201).json({
@@ -100,6 +128,10 @@ cashMovementsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
     });
   } catch (error) {
     console.error(error);
+
+    if (error instanceof HttpError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
 
     return res.status(500).json({
       message: "Erro ao registrar movimento de caixa.",

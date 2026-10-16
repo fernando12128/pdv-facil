@@ -5,25 +5,20 @@ export const publicRoutes = Router();
 
 publicRoutes.get("/products", async (req, res) => {
   try {
-    const marketIdFromQuery =
-      typeof req.query.marketId === "string" ? req.query.marketId : null;
-
-    let marketId = marketIdFromQuery;
-
+    const marketId =
+      typeof req.query.marketId === "string" ? req.query.marketId.trim() : "";
     if (!marketId) {
-      const firstMarket = await prisma.market.findFirst({
-        select: {
-          id: true,
-        },
+      return res.status(400).json({
+        message: "Informe a empresa para consultar o catálogo público.",
       });
+    }
 
-      if (!firstMarket) {
-        return res.status(404).json({
-          message: "Nenhum mercado encontrado.",
-        });
-      }
-
-      marketId = firstMarket.id;
+    const marketExists = await prisma.market.findUnique({
+      where: { id: marketId },
+      select: { id: true },
+    });
+    if (!marketExists) {
+      return res.status(404).json({ message: "Empresa não encontrada." });
     }
 
     const products = await prisma.product.findMany({
@@ -50,8 +45,6 @@ publicRoutes.get("/products", async (req, res) => {
       return {
         id: product.id,
         name: product.name,
-        sku: product.sku,
-        barcode: product.barcode,
         brand: product.brand,
         category: product.category || "Produtos",
         categorySlug: createSlug(product.category || "Produtos"),
@@ -65,9 +58,6 @@ publicRoutes.get("/products", async (req, res) => {
           style: "currency",
           currency: "BRL",
         }),
-
-        stock: product.stock,
-        minStock: product.minStock,
 
         isAvailable: product.allowBackorder ? true : product.stock > 0,
 

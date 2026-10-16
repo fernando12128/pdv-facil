@@ -27,6 +27,8 @@ export type Sale = {
 };
 
 export type CreateSaleData = {
+  cashSessionId: string;
+  idempotencyKey: string;
   customerName?: string;
   paymentMethod: string;
   discount: number;
@@ -59,6 +61,7 @@ export function createSaleRequest(data: CreateSaleData) {
   return apiRequest<SaleResponse>("/sales", {
     method: "POST",
     token: getToken(),
+    headers: { "Idempotency-Key": data.idempotencyKey },
     body: data,
   });
 }

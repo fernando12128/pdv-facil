@@ -187,12 +187,25 @@ async function getSessionDetails(sessionId: string, marketId: string) {
 }
 
 cashSessionsRoutes.get("/current", async (req: AuthenticatedRequest, res) => {
+  const registerKey = normalizeRegisterKey(req.query.registerKey);
+  if (!registerKey) {
+    return res.status(400).json({ message: "Identificação do caixa inválida." });
+  }
   const session = await prisma.cashSession.findFirst({
-    where: { marketId: req.user!.marketId, status: "OPEN" },
+    where: { marketId: req.user!.marketId, status: "OPEN", registerKey },
     include: { movements: { orderBy: { createdAt: "desc" } } },
     orderBy: { openedAt: "desc" },
   });
   return res.json({ session });
+});
+
+cashSessionsRoutes.get("/open-sessions", async (req: AuthenticatedRequest, res) => {
+  const sessions = await prisma.cashSession.findMany({
+    where: { marketId: req.user!.marketId, status: "OPEN" },
+    orderBy: { openedAt: "asc" },
+    select: { id: true, registerKey: true, operatorName: true, openingAmount: true, openedAt: true },
+  });
+  return res.json({ sessions });
 });
 
 cashSessionsRoutes.get("/history", async (req: AuthenticatedRequest, res) => {
@@ -512,30 +525,42 @@ cashSessionsRoutes.get(
 );
 
 cashSessionsRoutes.post("/open", async (req: AuthenticatedRequest, res) => {
-  const current = await prisma.cashSession.findFirst({
-    where: { marketId: req.user!.marketId, status: "OPEN" },
-  });
-  if (current) {
-    return res.status(409).json({ message: "Já existe um caixa aberto." });
+  const registerKey = normalizeRegisterKey(req.body.registerKey);
+  if (!registerKey) {
+    return res.status(400).json({ message: "Identificação do caixa inválida." });
   }
 
   const openingAmount = Number(req.body.openingAmount || 0);
-  if (Number.isNaN(openingAmount) || openingAmount < 0) {
+  if (!Number.isFinite(openingAmount) || openingAmount < 0 || Math.round(openingAmount * 100) !== openingAmount * 100) {
     return res.status(400).json({ message: "Valor inicial inválido." });
   }
 
-  const session = await prisma.cashSession.create({
-    data: {
-      marketId: req.user!.marketId,
-      userId: req.user!.userId,
-      operatorName: req.body.operatorName
-        ? String(req.body.operatorName).trim()
-        : null,
-      openingAmount: roundMoney(openingAmount),
-    },
-  });
-  return res.status(201).json({ session });
+  try {
+    const session = await prisma.cashSession.create({
+      data: {
+        marketId: req.user!.marketId,
+        userId: req.user!.userId,
+        registerKey,
+        operatorName: req.body.operatorName
+          ? String(req.body.operatorName).trim()
+          : null,
+        openingAmount: roundMoney(openingAmount),
+      },
+    });
+    return res.status(201).json({ session });
+  } catch (error) {
+    if ((error as { code?: string }).code === "P2002") {
+      return res.status(409).json({ message: "Esse caixa já está aberto." });
+    }
+    console.error(error);
+    return res.status(500).json({ message: "Erro ao abrir caixa." });
+  }
 });
+
+function normalizeRegisterKey(value: unknown) {
+  const key = String(value || "CAIXA-01").trim().toUpperCase();
+  return /^[A-Z0-9][A-Z0-9 _-]{0,39}$/.test(key) ? key : null;
+}
 
 cashSessionsRoutes.post(
   "/:id/close",
@@ -549,7 +574,7 @@ cashSessionsRoutes.post(
     }
 
     const closingAmount = Number(req.body.closingAmount);
-    if (Number.isNaN(closingAmount) || closingAmount < 0) {
+    if (!Number.isFinite(closingAmount) || closingAmount < 0 || Math.round(closingAmount * 100) !== closingAmount * 100) {
       return res.status(400).json({ message: "Valor final inválido." });
     }
 
@@ -605,7 +630,8 @@ cashSessionsRoutes.post(
     const code = closingCode();
     const closedAt = new Date();
 
-    const closedSession = await prisma.$transaction(async (tx) => {
+    try {
+      const closedSession = await prisma.$transaction(async (tx) => {
       const updated = await tx.cashSession.updateMany({
         where: {
           id: details.id,
@@ -648,8 +674,15 @@ cashSessionsRoutes.post(
       return tx.cashSession.findUnique({
         where: { id: details.id },
       });
-    });
+      });
 
-    return res.json({ session: closedSession });
+      return res.json({ session: closedSession });
+    } catch (error) {
+      if (error instanceof Error && error.message === "CASH_SESSION_ALREADY_CLOSED") {
+        return res.status(409).json({ message: "Este caixa já foi fechado." });
+      }
+      console.error(error);
+      return res.status(500).json({ message: "Erro ao fechar caixa." });
+    }
   }
 );

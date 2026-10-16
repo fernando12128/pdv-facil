@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowDownCircle,
   ArrowLeft,
@@ -23,6 +23,7 @@ import {
 } from "../../services/cashMovementsService";
 import {
   getCurrentCashSession,
+  listOpenCashSessions,
   listCashSessionHistory,
   openCashSession,
   type CashSession,
@@ -57,9 +58,11 @@ export default function PDVPage({ onNavigate }: Props) {
   const [paymentMethod, setPaymentMethod] = useState("Dinheiro");
   const [discount, setDiscount] = useState("");
   const [operatorName, setOperatorName] = useState("");
+  const [registerKey, setRegisterKey] = useState(() => localStorage.getItem("pdv_facil_register_key") || "CAIXA-01");
   const [openingAmount, setOpeningAmount] = useState("");
   const [closingOpen, setClosingOpen] = useState(false);
   const [history, setHistory] = useState<CashSession[]>([]);
+  const [openSessions, setOpenSessions] = useState<Pick<CashSession, "id" | "registerKey" | "operatorName" | "openingAmount" | "openedAt">[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [movement, setMovement] = useState<MovementModal>(null);
   const [movementAmount, setMovementAmount] = useState("");
@@ -70,6 +73,7 @@ export default function PDVPage({ onNavigate }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const pendingSaleRef = useRef<{ signature: string; key: string } | null>(null);
 
   async function loadProducts() {
     const response = await listProductsRequest();
@@ -80,14 +84,16 @@ export default function PDVPage({ onNavigate }: Props) {
     try {
       setLoading(true);
       const token = localStorage.getItem("pdv_facil_token");
-      const [current, currentUser, paymentResponse, historyResponse] = await Promise.all([
-        getCurrentCashSession(),
+      const [current, currentUser, paymentResponse, historyResponse, openResponse] = await Promise.all([
+        getCurrentCashSession(registerKey),
         token ? meRequest(token) : Promise.resolve(null),
         managementService.payments.list(),
         listCashSessionHistory(),
+        listOpenCashSessions(),
       ]);
       setSession(current.session);
       setHistory(historyResponse.sessions);
+      setOpenSessions(openResponse.sessions);
       setUser(currentUser?.user || null);
       const enabledPayments = paymentResponse.paymentSettings.filter(
         (item) => item.isEnabled
@@ -158,16 +164,25 @@ export default function PDVPage({ onNavigate }: Props) {
     setPaymentMethod(payments.length ? paymentLabels[payments[0].type] : "Dinheiro");
     setDiscount("");
     setError("");
+    pendingSaleRef.current = null;
   }
 
   async function openSession(event: FormEvent) {
     event.preventDefault();
+    const normalizedRegisterKey = registerKey.trim().toUpperCase();
+    if (!normalizedRegisterKey) {
+      setError("Informe a identificação deste caixa.");
+      return;
+    }
     try {
       setSaving(true);
+      localStorage.setItem("pdv_facil_register_key", normalizedRegisterKey);
       setSession((await openCashSession({
         openingAmount: Number(openingAmount) || 0,
         operatorName: operatorName || user?.name,
+        registerKey: normalizedRegisterKey,
       })).session);
+      setOpenSessions((await listOpenCashSessions()).sessions);
       setSuccess("Caixa aberto.");
     } catch (value) {
       setError(value instanceof Error ? value.message : "Erro ao abrir caixa.");
@@ -210,11 +225,20 @@ export default function PDVPage({ onNavigate }: Props) {
     }
     try {
       setSaving(true);
-      const response = await createSaleRequest({
+      const saleData = {
+        cashSessionId: session!.id,
         customerName,
         paymentMethod,
         discount: validDiscount,
         items: cart.map((item) => ({ productId: item.product.id, quantity: item.quantity })),
+      };
+      const signature = JSON.stringify(saleData);
+      if (!pendingSaleRef.current || pendingSaleRef.current.signature !== signature) {
+        pendingSaleRef.current = { signature, key: crypto.randomUUID() };
+      }
+      const response = await createSaleRequest({
+        ...saleData,
+        idempotencyKey: pendingSaleRef.current.key,
       });
       setReceipt(response.sale);
       clear();
@@ -238,6 +262,7 @@ export default function PDVPage({ onNavigate }: Props) {
             <p>Informe o valor inicial em dinheiro</p>
             {error && <p className="pdv-error">{error}</p>}
             {success && <p className="pdv-success">{success}</p>}
+            <label>Identificação deste caixa<input value={registerKey} onChange={(e) => setRegisterKey(e.target.value.toUpperCase())} maxLength={40} placeholder="CAIXA-01" /></label>
             <label>Operador (opcional)<input value={operatorName} onChange={(e) => setOperatorName(e.target.value)} placeholder="Nome do operador" /></label>
             <label>Valor de abertura (R$)<input type="number" step="0.01" min="0" value={openingAmount} onChange={(e) => setOpeningAmount(e.target.value)} placeholder="0,00" /></label>
             <button type="submit" disabled={saving}>{saving ? "Abrindo..." : "Abrir Caixa"}</button>
@@ -246,6 +271,25 @@ export default function PDVPage({ onNavigate }: Props) {
               <button type="button" onClick={() => onNavigate("home")}>Sair</button>
             </div>
           </form>
+
+          {openSessions.length > 0 && (
+            <section className="cash-open-sessions" aria-label="Caixas já abertos">
+              <h2>Caixas abertos nesta empresa</h2>
+              <p>Selecione um terminal existente para continuar a operação.</p>
+              {openSessions.map((openSession) => (
+                <button key={openSession.id} type="button" onClick={async () => {
+                  const key = openSession.registerKey || "CAIXA-01";
+                  setRegisterKey(key);
+                  localStorage.setItem("pdv_facil_register_key", key);
+                  const current = await getCurrentCashSession(key);
+                  setSession(current.session);
+                }}>
+                  <span><strong>{openSession.registerKey}</strong><small>{openSession.operatorName || "Sem operador"}</small></span>
+                  <span>Acessar</span>
+                </button>
+              ))}
+            </section>
+          )}
 
           <section className="cash-history-card">
             <h2>Fechamentos anteriores</h2>

@@ -88,6 +88,7 @@ model Product {
 
   market    Market     @relation(fields: [marketId], references: [id])
   saleItems SaleItem[]
+  onlineOrderItems OnlineOrderItem[]
 
   @@index([marketId])
 }
@@ -103,6 +104,10 @@ model ProductSale {
   subtotal      Float
   total         Float
   status        SaleStatus @default(COMPLETED)
+  idempotencyKey  String?
+  idempotencyHash String?
+  cancelledAt     DateTime?
+  cancellationReason String?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
@@ -113,6 +118,7 @@ model ProductSale {
   @@index([marketId])
   @@index([cashSessionId])
   @@index([createdAt])
+  @@unique([marketId, idempotencyKey])
 }
 
 model SaleItem {
@@ -163,6 +169,7 @@ model CashSession {
   marketId          String
   userId            String
   operatorName      String?
+  registerKey       String            @default("CAIXA-01")
   openingAmount     Float
   closingAmount     Float?
   expectedCash      Float?
@@ -325,8 +332,10 @@ model OnlineOrderItem {
   quantity    Int
   unitPrice   Float
   total       Float
+  productId   String?
 
   order OnlineOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
 }
