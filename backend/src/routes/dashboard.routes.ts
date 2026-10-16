@@ -149,9 +149,9 @@ dashboardRoutes.get("/", async (req: AuthenticatedRequest, res) => {
     const chart = buildLast7DaysChart(startOfLast7Days, salesLast7Days);
 
     return res.json({
-      revenueToday: revenueTodayResult._sum.total || 0,
+      revenueToday: roundMoney(revenueTodayResult._sum.total || 0),
       salesToday,
-      revenueLast7Days: revenueLast7DaysResult._sum.total || 0,
+      revenueLast7Days: roundMoney(revenueLast7DaysResult._sum.total || 0),
       productsCount,
       activeProductsCount,
       lowStockCount,
@@ -199,7 +199,7 @@ function buildLast7DaysChart(
 
     if (day) {
       day.salesCount += 1;
-      day.revenue += sale.total;
+      day.revenue = roundMoney(day.revenue + sale.total);
     }
   }
 
@@ -208,6 +208,10 @@ function buildLast7DaysChart(
     salesCount: day.salesCount,
     revenue: day.revenue,
   }));
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function getDateKey(date: Date) {

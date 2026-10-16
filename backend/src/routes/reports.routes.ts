@@ -34,7 +34,7 @@ reportsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
     const day = sale.createdAt.toISOString().slice(0, 10);
     const currentDay = byDay.get(day) || { sales: 0, total: 0 };
     currentDay.sales += 1;
-    currentDay.total += sale.total;
+    currentDay.total = roundMoney(currentDay.total + sale.total);
     byDay.set(day, currentDay);
 
     const payment = byPayment.get(sale.paymentMethod) || {
@@ -42,7 +42,7 @@ reportsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
       total: 0,
     };
     payment.count += 1;
-    payment.total += sale.total;
+    payment.total = roundMoney(payment.total + sale.total);
     byPayment.set(sale.paymentMethod, payment);
 
     for (const item of sale.items) {
@@ -51,7 +51,7 @@ reportsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
         total: 0,
       };
       product.quantity += item.quantity;
-      product.total += item.total;
+      product.total = roundMoney(product.total + item.total);
       products.set(item.productName, product);
     }
   }
@@ -64,3 +64,7 @@ reportsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
       .slice(0, 10),
   });
 });
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}

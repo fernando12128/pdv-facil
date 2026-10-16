@@ -90,19 +90,19 @@ productsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       ? parsedSalePrice
       : Number(onlinePrice || 0);
 
-    if (Number.isNaN(parsedSalePrice) || parsedSalePrice < 0) {
+    if (!isMoneyValue(parsedSalePrice) || parsedSalePrice < 0) {
       return res.status(400).json({
         message: "Preço de venda inválido.",
       });
     }
 
-    if (Number.isNaN(parsedCost) || parsedCost < 0) {
+    if (!isMoneyValue(parsedCost) || parsedCost < 0) {
       return res.status(400).json({
         message: "Custo inválido.",
       });
     }
 
-    if (Number.isNaN(parsedOnlinePrice) || parsedOnlinePrice < 0) {
+    if (!isMoneyValue(parsedOnlinePrice) || parsedOnlinePrice < 0) {
       return res.status(400).json({
         message: "Preço online inválido.",
       });
@@ -232,19 +232,19 @@ productsRoutes.put("/:id", async (req: AuthenticatedRequest, res) => {
       ? parsedSalePrice
       : Number(onlinePrice || 0);
 
-    if (Number.isNaN(parsedSalePrice) || parsedSalePrice < 0) {
+    if (!isMoneyValue(parsedSalePrice) || parsedSalePrice < 0) {
       return res.status(400).json({
         message: "Preço de venda inválido.",
       });
     }
 
-    if (Number.isNaN(parsedCost) || parsedCost < 0) {
+    if (!isMoneyValue(parsedCost) || parsedCost < 0) {
       return res.status(400).json({
         message: "Custo inválido.",
       });
     }
 
-    if (Number.isNaN(parsedOnlinePrice) || parsedOnlinePrice < 0) {
+    if (!isMoneyValue(parsedOnlinePrice) || parsedOnlinePrice < 0) {
       return res.status(400).json({
         message: "Preço online inválido.",
       });
@@ -349,3 +349,7 @@ productsRoutes.delete("/:id", async (req: AuthenticatedRequest, res) => {
     });
   }
 });
+
+function isMoneyValue(value: number) {
+  return Number.isFinite(value) && Math.round(value * 100) === value * 100;
+}

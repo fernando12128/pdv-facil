@@ -31,12 +31,29 @@ const statusClass: Record<OnlineOrderStatus, string> = {
   CANCELLED: "danger",
 };
 
+function nextStatuses(order: OnlineOrder): OnlineOrderStatus[] {
+  switch (order.status) {
+    case "PENDING": return ["CONFIRMED", "CANCELLED"];
+    case "CONFIRMED": return ["PREPARING", "CANCELLED"];
+    case "PREPARING": return ["READY", "CANCELLED"];
+    case "READY": return [
+      ...(order.deliveryType === "DELIVERY" ? ["OUT_FOR_DELIVERY" as const] : []),
+      "DELIVERED",
+      "CANCELLED",
+    ];
+    case "OUT_FOR_DELIVERY": return ["DELIVERED", "CANCELLED"];
+    case "DELIVERED":
+    case "CANCELLED": return [];
+  }
+}
+
 export default function OnlineOrdersPage({ onLogout, onNavigate }: Props) {
   const [orders, setOrders] = useState<OnlineOrder[]>([]);
   const [selected, setSelected] = useState<OnlineOrder | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"ALL" | OnlineOrderStatus>("ALL");
   const [error, setError] = useState("");
+  const [updating, setUpdating] = useState(false);
 
   async function load() {
     try {
@@ -64,9 +81,17 @@ export default function OnlineOrdersPage({ onLogout, onNavigate }: Props) {
   const doneToday = todayOrders.filter((item) => item.status === "DELIVERED");
 
   async function updateStatus(next: OnlineOrderStatus) {
-    if (!selected) return;
-    await updateOnlineOrderStatusRequest(selected.id, next);
-    await load();
+    if (!selected || updating) return;
+    setUpdating(true);
+    setError("");
+    try {
+      await updateOnlineOrderStatusRequest(selected.id, next);
+      await load();
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Erro ao atualizar o pedido.");
+    } finally {
+      setUpdating(false);
+    }
   }
 
   function openWhatsApp() {
@@ -133,7 +158,8 @@ export default function OnlineOrdersPage({ onLogout, onNavigate }: Props) {
               <div className="order-detail-section"><strong>Itens</strong>{selected.items.map((item) => <div className="detail-line" key={item.id}><span>{item.quantity}× {item.productName}</span><span>{brl(item.total)}</span></div>)}</div>
               <div className="order-detail-section"><div className="detail-line"><span>Subtotal</span><span>{brl(selected.subtotal)}</span></div><div className="detail-line"><span>Desconto</span><span>- {brl(selected.discount)}</span></div><div className="detail-line"><span>Taxa</span><span>{brl(selected.deliveryFee)}</span></div><div className="detail-line"><strong>Total</strong><strong>{brl(selected.total)}</strong></div></div>
               <div className="order-status-actions">
-                {(["CONFIRMED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"] as OnlineOrderStatus[]).map((value) => <button key={value} className={value === "CANCELLED" ? "danger-button" : "outline-button"} onClick={() => updateStatus(value)}>{statusLabels[value]}</button>)}
+                {nextStatuses(selected).map((value) => <button key={value} disabled={updating} className={value === "CANCELLED" ? "danger-button" : "outline-button"} onClick={() => updateStatus(value)}>{statusLabels[value]}</button>)}
+                {!nextStatuses(selected).length && <p>Este pedido já está finalizado.</p>}
               </div>
             </div>
             <div className="modal-actions"><button className="outline-button" onClick={() => setSelected(null)}>Fechar</button></div>
