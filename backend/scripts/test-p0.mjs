@@ -1,12 +1,13 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 
 const backendDir = resolve(import.meta.dirname, '..');
 const dbPath = `/tmp/pdv-facil-p0-${process.pid}.sqlite`;
 const dbUrl = `file:${dbPath}`;
+try { unlinkSync(dbPath); } catch {}
 const db = new Database(dbPath);
 db.pragma('foreign_keys=ON');
 for (const dir of readdirSync(join(backendDir, 'prisma/migrations')).sort()) {
@@ -26,7 +27,7 @@ const port = await new Promise((resolvePort, reject) => {
 const baseUrl = `http://127.0.0.1:${port}`;
 const server = spawn(process.execPath, ['-r', 'tsx/cjs', 'src/server.ts'], {
   cwd: backendDir,
-  env: { ...process.env, DATABASE_URL: dbUrl, JWT_SECRET: 'p0-integration-test-secret', PORT: String(port) },
+  env: { ...process.env, DATABASE_URL: dbUrl, JWT_SECRET: 'p0-integration-test-secret', PORT: String(port), NODE_ENV: 'test', ACCOUNT_EMAIL_MODE: 'mock' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let serverOutput = '';
@@ -67,8 +68,18 @@ async function createCompany(slug) {
     method: 'POST',
     body: { name: `Owner ${slug}`, marketName: `Empresa ${slug}`, email: `${slug}@example.test`, password: 'senha-teste-123' },
   });
-  if (result.status !== 201) throw new Error(`Cadastro falhou: ${JSON.stringify(result)}`);
-  return result.data;
+  if (result.status !== 201 || !result.data.developmentToken) throw new Error(`Cadastro falhou: ${JSON.stringify(result)}`);
+  const verification = await request('/auth/verify-email', {
+    method: 'POST',
+    body: { email: `${slug}@example.test`, token: result.data.developmentToken },
+  });
+  if (verification.status !== 200) throw new Error(`Confirmação falhou: ${JSON.stringify(verification)}`);
+  const login = await request('/auth/login', {
+    method: 'POST',
+    body: { email: `${slug}@example.test`, password: 'senha-teste-123' },
+  });
+  if (login.status !== 200) throw new Error(`Login falhou: ${JSON.stringify(login)}`);
+  return login.data;
 }
 async function createProduct(token, name, stock, extra = {}) {
   const result = await request('/products', {
@@ -80,13 +91,15 @@ async function createProduct(token, name, stock, extra = {}) {
 
 try {
   const migrationDbPath = `/tmp/pdv-facil-p0-migration-${process.pid}.sqlite`;
+  try { unlinkSync(migrationDbPath); } catch {}
   const migrationDb = new Database(migrationDbPath);
   migrationDb.pragma('foreign_keys=ON');
   const migrationDirs = readdirSync(join(backendDir, 'prisma/migrations'))
     .filter((entry) => existsSync(join(backendDir, 'prisma/migrations', entry, 'migration.sql')))
     .sort();
-  const p0Migration = migrationDirs.at(-1);
-  for (const dir of migrationDirs.filter((entry) => entry !== p0Migration)) {
+  const p0Migration = migrationDirs.find((entry) => entry.startsWith('20261016090000_'));
+  const accountMigration = migrationDirs.find((entry) => entry.startsWith('20261017010000_'));
+  for (const dir of migrationDirs.filter((entry) => entry !== p0Migration && entry !== accountMigration)) {
     migrationDb.exec(readFileSync(join(backendDir, 'prisma/migrations', dir, 'migration.sql'), 'utf8'));
   }
   migrationDb.exec(`
@@ -96,12 +109,74 @@ try {
     INSERT INTO "CashSession" ("id","marketId","userId","openingAmount") VALUES ('legacy-session-1','legacy-market','legacy-user',0),('legacy-session-2','legacy-market','legacy-user',0);
   `);
   migrationDb.exec(readFileSync(join(backendDir, 'prisma/migrations', p0Migration, 'migration.sql'), 'utf8'));
+  migrationDb.exec(readFileSync(join(backendDir, 'prisma/migrations', accountMigration, 'migration.sql'), 'utf8'));
   const migratedSessions = migrationDb.prepare('SELECT "registerKey" FROM "CashSession" WHERE "marketId"=? ORDER BY "id"').all('legacy-market');
   check('Migração preserva múltiplos caixas abertos já existentes', migratedSessions.length === 2 && new Set(migratedSessions.map((row) => row.registerKey)).size === 2);
   migrationDb.close();
   try { (await import('node:fs/promises')).unlink(migrationDbPath); } catch {}
 
   await waitReady();
+
+  const authEmail = `auth-flow-${process.pid}@example.test`;
+  const authSignup = await request('/auth/register', {
+    method: 'POST',
+    body: { marketName: 'Empresa do Fluxo de Conta', email: authEmail, password: 'senha-original-123' },
+  });
+  const pendingLogin = await request('/auth/login', {
+    method: 'POST',
+    body: { email: authEmail, password: 'senha-original-123' },
+  });
+  check('Cadastro cria conta pendente e não libera login antes da confirmação', authSignup.status === 201 && !!authSignup.data.developmentToken && pendingLogin.status === 403 && pendingLogin.data.code === 'EMAIL_NOT_VERIFIED');
+  const immediateResend = await request('/auth/verification/resend', {
+    method: 'POST',
+    body: { email: authEmail },
+  });
+  check('Reenvio de confirmação respeita o intervalo mínimo', immediateResend.status === 200 && !immediateResend.data.developmentToken);
+
+  const verification = await request('/auth/verify-email', {
+    method: 'POST',
+    body: { email: authEmail, token: authSignup.data.developmentToken },
+  });
+  const verificationReplay = await request('/auth/verify-email', {
+    method: 'POST',
+    body: { email: authEmail, token: authSignup.data.developmentToken },
+  });
+  check('Confirmação de e-mail é válida uma única vez', verification.status === 200 && verificationReplay.status === 400);
+
+  const authLogin = await request('/auth/login', {
+    method: 'POST',
+    body: { email: authEmail, password: 'senha-original-123' },
+  });
+  const beforeReset = await request('/auth/me', { token: authLogin.data.token });
+  const resetRequest = await request('/auth/password-reset/request', {
+    method: 'POST',
+    body: { email: authEmail },
+  });
+  const unknownResetRequest = await request('/auth/password-reset/request', {
+    method: 'POST',
+    body: { email: 'nao-cadastrado@example.test' },
+  });
+  check('Recuperação não revela se o e-mail existe', resetRequest.status === 200 && unknownResetRequest.status === 200 && resetRequest.data.message === unknownResetRequest.data.message && !!resetRequest.data.developmentToken && !unknownResetRequest.data.developmentToken);
+
+  const reset = await request('/auth/password-reset/confirm', {
+    method: 'POST',
+    body: { token: resetRequest.data.developmentToken, password: 'senha-nova-123' },
+  });
+  const resetReplay = await request('/auth/password-reset/confirm', {
+    method: 'POST',
+    body: { token: resetRequest.data.developmentToken, password: 'outra-senha-123' },
+  });
+  const oldSession = await request('/auth/me', { token: authLogin.data.token });
+  const oldPasswordLogin = await request('/auth/login', {
+    method: 'POST',
+    body: { email: authEmail, password: 'senha-original-123' },
+  });
+  const newPasswordLogin = await request('/auth/login', {
+    method: 'POST',
+    body: { email: authEmail, password: 'senha-nova-123' },
+  });
+  check('Redefinição de senha é de uso único e encerra sessões anteriores', reset.status === 200 && resetReplay.status === 400 && oldSession.status === 401 && oldPasswordLogin.status === 401 && newPasswordLogin.status === 200);
+
   const companyA = await createCompany('a');
   const companyB = await createCompany('b');
   const productA = await createProduct(companyA.token, 'Produto A', 5);
