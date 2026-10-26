@@ -8,6 +8,13 @@ type Props = { onLogout: () => void; onNavigate: (page: AppPage) => void };
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const localDate = (s: string) => new Date(s).toLocaleDateString("pt-BR", { timeZone: "UTC" });
 const today = () => new Date().toLocaleDateString("en-CA");
+// Currency input follows Brazilian cent-by-cent typing: 1234 → R$ 12,34.
+const currencyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 12);
+const formatCurrencyInput = (value: string) => {
+  const digits = currencyDigits(value);
+  return digits ? brl(Number(digits) / 100) : "";
+};
+const parseCurrencyInput = (value: string) => Number(currencyDigits(value)) / 100;
 export default function FinancePage({ onLogout, onNavigate }: Props) {
   const [month, setMonth] = useState(new Date().toISOString().slice(0,7));
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
@@ -28,7 +35,7 @@ export default function FinancePage({ onLogout, onNavigate }: Props) {
   async function create(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError("");
     try {
-      await financeService.create({ ...form, amount: Number(form.amount) });
+      await financeService.create({ ...form, amount: parseCurrencyInput(form.amount) });
       setModal(false);
       setForm({ type: "PAYABLE", description: "", category: "", amount: "", dueDate: today(), notes: "" });
       await load();
@@ -64,7 +71,7 @@ export default function FinancePage({ onLogout, onNavigate }: Props) {
       <div className="field"><label>Tipo</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value as FinancialEntry["type"]})}><option value="PAYABLE">Conta a pagar</option><option value="RECEIVABLE">Conta a receber</option></select></div>
       <div className="field"><label>Categoria</label><input required value={form.category} onChange={e=>setForm({...form,category:e.target.value})} placeholder="Ex.: Aluguel, fornecedores" /></div>
       <div className="field finance-full"><label>Descrição</label><input required value={form.description} onChange={e=>setForm({...form,description:e.target.value})} /></div>
-      <div className="field"><label>Valor (R$)</label><input required type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} /></div>
+      <div className="field"><label>Valor (R$)</label><input required type="text" inputMode="numeric" autoComplete="off" placeholder="R$ 0,00" value={form.amount} onChange={e=>setForm({...form,amount:formatCurrencyInput(e.target.value)})} /></div>
       <div className="field"><label>Vencimento</label><input required type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value})} /></div>
       <div className="field finance-full"><label>Observações (opcional)</label><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} /></div>
       </div><div className="modal-actions"><button type="button" className="outline-button" onClick={()=>setModal(false)}>Cancelar</button><button disabled={busy} className="primary-button" type="submit">{busy?"Salvando...":"Salvar lançamento"}</button></div></form></div></div>}
