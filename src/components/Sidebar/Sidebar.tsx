@@ -3,6 +3,7 @@ import {
   Boxes,
   CircleUserRound,
   CreditCard,
+  Wallet,
   FileChartColumnIncreasing,
   Globe,
   LockKeyhole,
@@ -31,6 +32,7 @@ export type AppPage =
   | "sales"
   | "cash-closings"
   | "online-orders"
+  | "finance"
   | "payments"
   | "reports"
   | "settings";
@@ -69,6 +71,7 @@ const registrationItems: SidebarItem[] = [
 ];
 
 const systemItems: SidebarItem[] = [
+  { id: "finance", label: "Financeiro", icon: <Wallet /> },
   { id: "payments", label: "Formas de Pagamento", icon: <CreditCard /> },
   {
     id: "reports",

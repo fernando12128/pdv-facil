@@ -46,6 +46,7 @@ model Market {
   paymentSettings        PaymentSetting[]
   onlineOrders           OnlineOrder[]
   cashClosingCorrections CashClosingCorrection[]
+  financialEntries FinancialEntry[]
 }
 
 enum UserRole {
@@ -348,4 +349,22 @@ enum OnlineOrderStatus {
   OUT_FOR_DELIVERY
   DELIVERED
   CANCELLED
+}
+
+model FinancialEntry {
+  id          String   @id @default(uuid())
+  marketId    String
+  type        String
+  description String
+  category    String
+  amountCents Int
+  dueDate     DateTime
+  settledAt   DateTime?
+  status      String   @default("OPEN")
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  market      Market   @relation(fields: [marketId], references: [id])
+  @@index([marketId, dueDate])
+  @@index([marketId, status])
 }
