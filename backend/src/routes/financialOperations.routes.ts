@@ -148,6 +148,67 @@ financialOperationsRoutes.post("/transactions/:id/reconcile", async (req: Authen
     return res.json({ message: "Conciliação registrada." });
   } catch (err) { console.error(err); return res.status(500).json({ message: "Falha ao conciliar." }); }
 });
+// Concilia um crédito bancário com UMA venda do PDV, sem gerar nova receita financeira.
+financialOperationsRoutes.get("/transactions/:id/sale-suggestions", async (req: AuthenticatedRequest, res) => {
+  const marketId = req.user!.marketId;
+  const movement = await prisma.bankTransaction.findFirst({ where: {
+    id: req.params.id, marketId, status: "UNMATCHED", amountCents: { gt: 0 }
+  } });
+  if (!movement) return res.status(404).json({ message: "Crédito não encontrado ou já conciliado." });
+  const [sales, rules] = await Promise.all([
+    prisma.productSale.findMany({ where: {
+      marketId, status: "COMPLETED", paymentMethod: { in: ["PIX", "DEBIT", "CREDIT"] },
+      bankSettlement: null,
+      createdAt: { gte: new Date(movement.date.getTime() - 30 * 86400000), lte: new Date(movement.date.getTime() + 30 * 86400000) }
+    }, take: 100, orderBy: { createdAt: "desc" } }),
+    prisma.cardFeeRule.findMany({ where: { marketId, active: true } })
+  ]);
+  const byMethod = new Map(rules.map(rule => [rule.paymentMethod, rule]));
+  const suggestions = sales.flatMap(sale => {
+    const gross = Math.round(sale.total * 100);
+    const rule = byMethod.get(sale.paymentMethod);
+    if (sale.paymentMethod !== "PIX" && !rule) return [];
+    const fee = sale.paymentMethod === "PIX" ? 0 : Math.round(gross * rule!.feeBps / 10000);
+    const expected = gross - fee;
+    if (movement.amountCents !== expected) return [];
+    return [{ id: sale.id, createdAt: sale.createdAt, paymentMethod: sale.paymentMethod, gross: money(gross), net: money(expected), fee: money(fee) }];
+  });
+  return res.json({ suggestions });
+});
+financialOperationsRoutes.post("/transactions/:id/reconcile-sale", async (req: AuthenticatedRequest, res) => {
+  const marketId = req.user!.marketId, saleId = req.body?.saleId;
+  if (typeof saleId !== "string") return res.status(400).json({ message: "Selecione uma venda." });
+  try {
+    const result = await prisma.$transaction(async tx => {
+      const movement = await tx.bankTransaction.findFirst({ where: { id: req.params.id, marketId, status: "UNMATCHED", amountCents: { gt: 0 } } });
+      const sale = await tx.productSale.findFirst({ where: { id: saleId, marketId, status: "COMPLETED",
+        paymentMethod: { in: ["PIX","DEBIT","CREDIT"] }, bankSettlement: null } });
+      if (!movement || !sale) return "NOT_FOUND";
+      const gross = Math.round(sale.total * 100);
+      const rule = sale.paymentMethod === "PIX" ? null : await tx.cardFeeRule.findUnique({
+        where: { marketId_paymentMethod: { marketId, paymentMethod: sale.paymentMethod } }
+      });
+      if (sale.paymentMethod !== "PIX" && (!rule || !rule.active)) return "FEE_MISSING";
+      const fee = sale.paymentMethod === "PIX" ? 0 : Math.round(gross * rule!.feeBps / 10000);
+      if (movement.amountCents !== gross - fee) return "MISMATCH";
+      const claim = await tx.bankTransaction.updateMany({ where: { id: movement.id, marketId, status: "UNMATCHED" },
+        data: { status: "MATCHED" } });
+      if (!claim.count) return "NOT_FOUND";
+      await tx.bankTransactionSale.create({ data: { marketId, bankTransactionId: movement.id, saleId: sale.id } });
+      await audit(tx, marketId, req.user!.userId, "RECONCILE_SALE", "BANK_TRANSACTION", movement.id, sale.id);
+      return "OK";
+    });
+    if (result === "NOT_FOUND") return res.status(409).json({ message: "Venda ou movimentação indisponível." });
+    if (result === "FEE_MISSING") return res.status(400).json({ message: "Configure a taxa da modalidade em Configurações." });
+    if (result === "MISMATCH") return res.status(400).json({ message: "Valor líquido da venda não corresponde ao crédito bancário." });
+    return res.json({ message: "Venda conciliada sem duplicar a receita." });
+  } catch (error) {
+    if ((error as { code?: string }).code === "P2002") return res.status(409).json({ message: "Esta venda já foi conciliada." });
+    console.error(error);
+    return res.status(500).json({ message: "Não foi possível conciliar a venda." });
+  }
+});
+
 // Classifica movimentações que não possuem lançamento prévio (ex.: tarifa bancária).
 financialOperationsRoutes.post("/transactions/:id/classify", async (req: AuthenticatedRequest, res) => {
   const marketId = req.user!.marketId;
