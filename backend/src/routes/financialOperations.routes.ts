@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { randomUUID, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { prisma } from "../lib/prisma";
 import { authMiddleware, type AuthenticatedRequest } from "../middlewares/authMiddleware";
 
@@ -86,8 +86,13 @@ financialOperationsRoutes.post("/transactions/import", async (req: Authenticated
     const result = await prisma.$transaction(async tx => {
       let added = 0;
       for (const row of rows) {
-        const inserted = await tx.bankTransaction.createMany({ data: { marketId, bankAccountId, ...row }, skipDuplicates: true });
-        added += inserted.count;
+        const existing = await tx.bankTransaction.findUnique({
+          where: { bankAccountId_externalId: { bankAccountId, externalId: row.externalId } },
+          select: { id: true }
+        });
+        if (existing) continue;
+        await tx.bankTransaction.create({ data: { marketId, bankAccountId, ...row } });
+        added++;
       }
       await audit(tx, marketId, req.user!.userId, "IMPORT", "BANK_ACCOUNT", bankAccountId, JSON.stringify({ submitted: rows.length, added }));
       return added;
