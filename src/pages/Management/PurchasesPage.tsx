@@ -84,17 +84,18 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
   }
 
   function editPurchase(purchase: Purchase) {
-    if (purchase.status !== "DRAFT" || purchase.financialEntries.length === 0 ||
-        purchase.financialEntries.some(entry => entry.status !== "OPEN" || entry.settledAt || entry.bankTransactionId)) {
+    const entries = purchase.financialEntries;
+    if (purchase.status !== "DRAFT" || !Array.isArray(entries) || entries.length === 0 ||
+        entries.some(entry => entry.status !== "OPEN" || entry.settledAt || entry.bankTransactionId)) {
       setError("Somente romaneios pendentes, com todas as parcelas em aberto e não conciliadas, podem ser editados.");
       return;
     }
-    const first = purchase.financialEntries[0];
+    const first = entries[0];
     setEditingPurchaseId(purchase.id);
     setSupplierId(purchase.supplier.id);
     setReference(purchase.reference || "");
     setDueDate(first.dueDate.slice(0, 10));
-    setInstallmentCount(purchase.financialEntries.length);
+    setInstallmentCount(entries.length);
     setLines(purchase.items.map(item => ({
       productId: item.productId,
       search: item.product.name,
@@ -221,7 +222,8 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
             <td className="right">{brl(p.total)}</td>
             <td><span className={`badge ${p.status === "RECEIVED" ? "success" : "warning"}`}>{p.status === "RECEIVED" ? "Recebida" : "Pendente"}</span></td>
             <td className="right">{p.status === "DRAFT" && <div className="purchases-history-actions">
-              {p.financialEntries.length > 0 && p.financialEntries.every(entry => entry.status === "OPEN" && !entry.settledAt && !entry.bankTransactionId) &&
+              {Array.isArray(p.financialEntries) && p.financialEntries.length > 0 &&
+                p.financialEntries.every(entry => entry.status === "OPEN" && !entry.settledAt && !entry.bankTransactionId) &&
                 <button disabled={busy} className="outline-button" onClick={() => editPurchase(p)}><Pencil size={14} /> Editar</button>}
               <button disabled={busy} className="outline-button" onClick={() => receive(p)}>Receber</button>
             </div>}</td>
