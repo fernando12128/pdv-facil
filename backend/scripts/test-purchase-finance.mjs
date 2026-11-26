@@ -146,6 +146,24 @@ try {
   const audit = await request("/finance-ops/audit", { token: tokenA });
   assert(audit.status === 200 && audit.data.logs.some(l => l.action === "RECONCILE"), "Auditoria da conciliação registrada");
 
+  const unmatchedImport = await request("/finance-ops/transactions/import", { token: tokenA, method: "POST", body: {
+    bankAccountId: idBank, transactions: [{ date: "2026-12-11", description: "Tarifa teste", amount: -3.25, externalId: "FEE-TEST-001" }]
+  } });
+  assert(unmatchedImport.status === 201 && unmatchedImport.data.added === 1, "Tarifa bancária importada");
+  const allMovements = await request("/finance-ops/transactions", { token: tokenA });
+  const feeMovement = allMovements.data.transactions.find(m => m.externalId === "FEE-TEST-001");
+  const classified = await request(`/finance-ops/transactions/${feeMovement.id}/classify`, {
+    token: tokenA, method: "POST", body: { category: "Tarifas bancárias" }
+  });
+  assert(classified.status === 201 && classified.data.entry.amountCents === 325, "Tarifa classificada como despesa liquidada");
+  const cardRule = await request("/finance-ops/card-fees", { token: tokenA, method: "PUT", body: {
+    paymentMethod: "DEBIT", providerName: "Maquininha fictícia", feePercent: 1.75, settlementDays: 1
+  } });
+  assert(cardRule.status === 200 && cardRule.data.rule.feeBps === 175, "Taxa de cartão salva por empresa");
+  const otherRules = await request("/finance-ops/card-fees", { token: tokenB });
+  assert(otherRules.status === 200 && otherRules.data.rules.length === 0, "Configuração de cartão não vaza entre empresas");
+  const forecast = await request("/finance-ops/card-forecast?month=2026-12", { token: tokenA });
+  assert(forecast.status === 200 && Array.isArray(forecast.data.forecast), "Previsão de recebíveis disponível");
   console.log("Integração romaneio/financeiro aprovada.");
 } catch (error) {
   console.error(error);
