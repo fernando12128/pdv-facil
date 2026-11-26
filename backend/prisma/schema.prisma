@@ -76,6 +76,7 @@ model Market {
   bankTransactions BankTransaction[]
   recurringRules RecurringRule[]
   financeAuditLogs FinanceAuditLog[]
+  cardFeeRules CardFeeRule[]
 }
 
 enum UserRole {
@@ -511,4 +512,18 @@ model FinanceAuditLog {
   createdAt DateTime @default(now())
   market Market @relation(fields: [marketId], references: [id])
   @@index([marketId, createdAt])
+}
+
+model CardFeeRule {
+  id String @id @default(uuid())
+  marketId String
+  paymentMethod String
+  providerName String
+  feeBps Int
+  settlementDays Int @default(1)
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  market Market @relation(fields: [marketId], references: [id])
+  @@unique([marketId, paymentMethod])
 }
