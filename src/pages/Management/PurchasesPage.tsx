@@ -235,7 +235,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
               </div>}
             </div>
             <div className="field"><label>Qtd.</label><input type="number" min="1" step="1" value={line.quantity} onChange={e => updateLine(index, { quantity: e.target.value })} /></div>
-            <div className="field"><label>Custo unitário</label><input type="number" min="0" step="0.01" value={line.unitCost} onChange={e => updateLine(index, { unitCost: e.target.value })} /></div>
+            <div className="field"><label>Custo unitário</label><input type="text" inputMode="numeric" autoComplete="off" aria-label={`Custo unitário do produto ${index + 1} em reais`} value={brl(Number(line.unitCost) || 0)} onChange={e => updateLine(index, { unitCost: String(moneyInput(e.target.value)) })} /></div>
             <button className="outline-button" type="button" aria-label="Remover linha" disabled={lines.length === 1} onClick={() => { setManualProductIndex(null); setActiveProductSearch(null); setLines(current => current.filter((_, i) => i !== index)); }}>×</button>
           </div>)}
         </div>
