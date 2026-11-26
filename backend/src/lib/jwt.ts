@@ -4,6 +4,7 @@ type TokenPayload = {
   userId: string;
   marketId: string;
   role: string;
+  authVersion?: number;
 };
 
 export type CashCorrectionTokenPayload = {

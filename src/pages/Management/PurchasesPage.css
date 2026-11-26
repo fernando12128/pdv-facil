@@ -1,0 +1,17 @@
+.purchases-heading-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.purchases-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.purchases-note { color: var(--muted-foreground); font-size: 13px; line-height: 1.6; margin-bottom: 0; }
+.purchases-detail { padding: 10px 0; min-width: 220px; line-height: 1.8; color: var(--muted-foreground); }
+.purchases-lines { display: grid; gap: 12px; margin: 20px 0; }
+.purchases-line { display: grid; grid-template-columns: minmax(0, 2fr) 80px 125px 38px; gap: 9px; align-items: end; }
+.purchases-line > button { height: 39px; }
+.purchases-total { text-align: right; padding-top: 16px; font-size: 14px; color: var(--muted-foreground); }
+.purchases-total strong { color: var(--foreground); font-size: 18px; }
+@media (max-width: 900px) { .purchases-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+ .purchases-heading-actions { width: 100%; }
+ .purchases-heading-actions button { flex: 1; }
+ .purchases-stats { grid-template-columns: 1fr; }
+ .purchases-line { grid-template-columns: 1fr 1fr; }
+ .purchases-line .field:first-child { grid-column: 1 / -1; }
+}
