@@ -74,6 +74,7 @@ model Market {
   financialEntries FinancialEntry[]
   bankAccounts BankAccount[]
   bankTransactions BankTransaction[]
+  bankSaleSettlements BankTransactionSale[]
   recurringRules RecurringRule[]
   financeAuditLogs FinanceAuditLog[]
   cardFeeRules CardFeeRule[]
@@ -145,6 +146,7 @@ model ProductSale {
 
   market      Market       @relation(fields: [marketId], references: [id])
   cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
+  bankSettlement BankTransactionSale?
   items       SaleItem[]
 
   @@index([marketId])
@@ -481,6 +483,7 @@ model BankTransaction {
   market Market @relation(fields: [marketId], references: [id])
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
   financialEntry FinancialEntry?
+  saleSettlement BankTransactionSale?
   @@unique([bankAccountId, externalId])
   @@index([marketId, date])
 }
@@ -526,4 +529,16 @@ model CardFeeRule {
   updatedAt DateTime @updatedAt
   market Market @relation(fields: [marketId], references: [id])
   @@unique([marketId, paymentMethod])
+}
+
+model BankTransactionSale {
+  id String @id @default(uuid())
+  marketId String
+  bankTransactionId String @unique
+  saleId String @unique
+  createdAt DateTime @default(now())
+  market Market @relation(fields: [marketId], references: [id])
+  bankTransaction BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Restrict)
+  sale ProductSale @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  @@index([marketId, createdAt])
 }
