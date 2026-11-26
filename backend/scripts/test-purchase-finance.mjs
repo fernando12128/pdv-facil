@@ -100,6 +100,52 @@ try {
   assert(after.data.entries.filter(item => item.purchaseId === id).length === 1, "Recebimento não duplica o financeiro");
   const paid = await request(`/finance/entries/${linked[0].id}/settle`, { token: tokenA, method: "PATCH" });
   assert(paid.status === 200 && paid.data.entry.status === "SETTLED", "Conta pode ser liquidada no Financeiro");
+  const parcelled = await request("/purchases", { token: tokenA, method: "POST", body: {
+    supplierId: supplier.data.supplier.id, reference: "ROM-PARCELADO", dueDate: "2026-12-10", installmentCount: 3,
+    items: [{ productId: product.data.product.id, quantity: 4, unitCost: 12.5 }]
+  } });
+  assert(parcelled.status === 201, "Romaneio parcelado criado");
+  const installmentEntries = (await request("/finance/entries", { token: tokenA })).data.entries
+    .filter(entry => entry.purchaseId === parcelled.data.purchase.id);
+  assert(installmentEntries.length === 3 && installmentEntries.reduce((sum,e) => sum + e.amountCents,0) === 5000,
+    "Parcelas totalizam o romaneio sem perder centavos");
+  const account = await request("/finance-ops/accounts", { token: tokenA, method: "POST", body: {
+    name: "Conta de teste", bankName: "Banco fictício", accountType: "CHECKING", lastFour: "1234"
+  } });
+  assert(account.status === 201, "Conta bancária de teste criada");
+  const foreignAccounts = await request("/finance-ops/accounts", { token: tokenB });
+  assert(foreignAccounts.status === 200 && foreignAccounts.data.accounts.length === 0, "Contas bancárias isoladas");
+  const idBank = account.data.account.id;
+  const extractPayload = { bankAccountId: idBank, transactions: [
+    { date: "2026-12-10", description: "Pagamento fornecedor", amount: -16.67, externalId: "OFX-TESTE-001" }
+  ] };
+  const imported = await request("/finance-ops/transactions/import", { token: tokenA, method: "POST", body: extractPayload });
+  assert(imported.status === 201 && imported.data.added === 1, "Movimentação bancária importada");
+  const repeated = await request("/finance-ops/transactions/import", { token: tokenA, method: "POST", body: extractPayload });
+  assert(repeated.status === 201 && repeated.data.added === 0 && repeated.data.duplicates === 1, "Reimportação ignora duplicata");
+  const statement = await request("/finance-ops/transactions", { token: tokenA });
+  const movementId = statement.data.transactions[0].id;
+  const suggestions = await request(`/finance-ops/transactions/${movementId}/suggestions`, { token: tokenA });
+  assert(suggestions.status === 200 && suggestions.data.suggestions.some(e => e.purchaseId === undefined || e.id === installmentEntries[0].id),
+    "Sugestão de conciliação encontra valor correspondente");
+  const matched = await request(`/finance-ops/transactions/${movementId}/reconcile`, { token: tokenA, method: "POST",
+    body: { entryId: installmentEntries.find(e => e.amountCents === 1667).id } });
+  assert(matched.status === 200, "Conciliação manual liquida parcela");
+  const repeatMatch = await request(`/finance-ops/transactions/${movementId}/reconcile`, { token: tokenA, method: "POST",
+    body: { entryId: installmentEntries[1].id } });
+  assert(repeatMatch.status === 409, "Conciliação duplicada bloqueada");
+  const recurrence = await request("/finance-ops/recurrences", { token: tokenA, method: "POST", body: {
+    type: "PAYABLE", description: "Aluguel", category: "Despesas fixas", amount: 150,
+    nextDueDate: "2026-12-05"
+  } });
+  assert(recurrence.status === 201, "Recorrência cadastrada");
+  const generated = await request("/finance-ops/recurrences/generate", { token: tokenA, method: "POST" });
+  assert(generated.status === 200 && generated.data.generated > 0, "Vencimentos gerados");
+  const generatedAgain = await request("/finance-ops/recurrences/generate", { token: tokenA, method: "POST" });
+  assert(generatedAgain.status === 200 && generatedAgain.data.generated === 0, "Geração não duplica vencimentos");
+  const audit = await request("/finance-ops/audit", { token: tokenA });
+  assert(audit.status === 200 && audit.data.logs.some(l => l.action === "RECONCILE"), "Auditoria da conciliação registrada");
+
   console.log("Integração romaneio/financeiro aprovada.");
 } catch (error) {
   console.error(error);
