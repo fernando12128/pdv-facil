@@ -448,7 +448,6 @@ model PurchaseItem {
   quantity   Int
   unitCost   Float
   total      Float
-  costAtSale Float @default(0)
   purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product    Product @relation(fields: [productId], references: [id])
   @@index([purchaseId])
