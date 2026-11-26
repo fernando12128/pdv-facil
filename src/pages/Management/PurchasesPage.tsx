@@ -210,6 +210,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
                 aria-controls={`purchase-products-${index}`}
                 autoComplete="off"
                 placeholder="Digite para pesquisar..."
+                className={line.productId ? "purchases-product-input-selected" : undefined}
                 value={line.search}
                 onFocus={() => setActiveProductSearch(index)}
                 onChange={e => { updateLine(index, { productId: "", search: e.target.value }); setActiveProductSearch(index); }}
@@ -222,7 +223,6 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
                   }
                 }}
               />
-              {line.productId && <small className="purchases-selected-product">✓ Produto selecionado</small>}
               {activeProductSearch === index && <div id={`purchase-products-${index}`} className="purchases-product-results" role="listbox">
                 {products.filter(p => normalizeSearch([p.name, p.sku || "", p.barcode || ""].join(" ")).includes(normalizeSearch(line.search)) &&
                   !lines.some((l, i) => i !== index && l.productId === p.id)).slice(0, 30).map(p =>
