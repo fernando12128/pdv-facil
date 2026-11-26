@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 
 import { financeRoutes } from "./routes/finance.routes";
+import { financialOperationsRoutes } from "./routes/financialOperations.routes";
 import { authRoutes } from "./routes/auth.routes";
 import { productsRoutes } from "./routes/products.routes";
 import { salesRoutes } from "./routes/sales.routes";
@@ -51,6 +52,7 @@ app.get("/", (_req, res) => {
 
 app.use("/auth", authRoutes);
 app.use("/finance", financeRoutes);
+app.use("/finance-ops", financialOperationsRoutes);
 app.use("/purchases", purchasesRoutes);
 app.use("/products", productsRoutes);
 app.use("/sales", salesRoutes);
