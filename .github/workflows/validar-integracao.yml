@@ -31,6 +31,7 @@ jobs:
       - run: npx prisma generate
       - run: npx tsc --noEmit
       - run: npm run test:p0
+      - run: npm run test:purchase-finance
         env:
           JWT_SECRET: test-only-not-production
           ACCOUNT_EMAIL_MODE: mock
