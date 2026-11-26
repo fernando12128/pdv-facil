@@ -236,7 +236,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
             </div>
             <div className="field"><label>Qtd.</label><input type="number" min="1" step="1" value={line.quantity} onChange={e => updateLine(index, { quantity: e.target.value })} /></div>
             <div className="field"><label>Custo unitário</label><input type="number" min="0" step="0.01" value={line.unitCost} onChange={e => updateLine(index, { unitCost: e.target.value })} /></div>
-            <button className="outline-button" type="button" aria-label="Remover linha" disabled={lines.length === 1} onClick={() => setLines(current => current.filter((_, i) => i !== index))}>×</button>
+            <button className="outline-button" type="button" aria-label="Remover linha" disabled={lines.length === 1} onClick={() => { setManualProductIndex(null); setActiveProductSearch(null); setLines(current => current.filter((_, i) => i !== index)); }}>×</button>
           </div>)}
         </div>
         {manualProductIndex !== null && <section className="purchases-manual-form">
