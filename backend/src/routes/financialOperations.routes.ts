@@ -233,6 +233,58 @@ financialOperationsRoutes.get("/audit", async (req: AuthenticatedRequest, res) =
   const logs = await prisma.financeAuditLog.findMany({ where: { marketId: req.user!.marketId }, orderBy: { createdAt: "desc" }, take: 100 });
   return res.json({ logs });
 });
+financialOperationsRoutes.get("/card-fees", async (req: AuthenticatedRequest, res) => {
+  const rules = await prisma.cardFeeRule.findMany({ where: { marketId: req.user!.marketId } });
+  return res.json({ rules });
+});
+financialOperationsRoutes.put("/card-fees", async (req: AuthenticatedRequest, res) => {
+  const marketId = req.user!.marketId;
+  const { paymentMethod, providerName, feePercent, settlementDays } = req.body || {};
+  if (!["CREDIT", "DEBIT"].includes(paymentMethod) ||
+      typeof providerName !== "string" || !providerName.trim() || providerName.length > 120 ||
+      typeof feePercent !== "number" || !Number.isFinite(feePercent) || feePercent < 0 || feePercent > 30 ||
+      !Number.isSafeInteger(settlementDays) || settlementDays < 0 || settlementDays > 90)
+    return res.status(400).json({ message: "Informe modalidade, adquirente, percentual (0–30) e prazo (0–90 dias)." });
+  const feeBps = Math.round(feePercent * 100);
+  const saved = await prisma.$transaction(async tx => {
+    const rule = await tx.cardFeeRule.upsert({
+      where: { marketId_paymentMethod: { marketId, paymentMethod } },
+      create: { marketId, paymentMethod, providerName: providerName.trim(), feeBps, settlementDays },
+      update: { providerName: providerName.trim(), feeBps, settlementDays, active: true }
+    });
+    await audit(tx, marketId, req.user!.userId, "CONFIGURE", "CARD_FEE", rule.id, paymentMethod);
+    return rule;
+  });
+  return res.json({ rule: saved });
+});
+financialOperationsRoutes.get("/card-forecast", async (req: AuthenticatedRequest, res) => {
+  const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+  if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ message: "Mês inválido." });
+  const from = new Date(month + "-01T00:00:00.000Z");
+  const to = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
+  const marketId = req.user!.marketId;
+  const [sales, rules] = await Promise.all([
+    prisma.productSale.findMany({ where: { marketId, status: "COMPLETED", createdAt: { gte: from, lt: to }, paymentMethod: { in: ["CREDIT","DEBIT"] } },
+      select: { id: true, createdAt: true, paymentMethod: true, total: true } }),
+    prisma.cardFeeRule.findMany({ where: { marketId, active: true } })
+  ]);
+  const byMethod = new Map(rules.map(rule => [rule.paymentMethod, rule]));
+  const forecast = sales.map(sale => {
+    const rule = byMethod.get(sale.paymentMethod);
+    const grossCents = Math.round(sale.total * 100);
+    const feeCents = rule ? Math.round(grossCents * rule.feeBps / 10000) : null;
+    const expected = rule ? new Date(sale.createdAt.getTime() + rule.settlementDays * 86400000) : null;
+    return {
+      saleId: sale.id, paymentMethod: sale.paymentMethod,
+      provider: rule?.providerName || null,
+      gross: money(grossCents),
+      fee: feeCents === null ? null : money(feeCents),
+      net: feeCents === null ? null : money(grossCents - feeCents),
+      expectedAt: expected?.toISOString() || null
+    };
+  });
+  return res.json({ month, forecast, notice: "Previsão gerencial estimada. Não confirma crédito bancário, parcelamento ou taxas reais cobradas." });
+});
 financialOperationsRoutes.get("/connectors", async (_req, res) => {
   return res.json({ providers: [
     { id: "OPEN_FINANCE", label: "Open Finance", status: "NOT_CONFIGURED" },
