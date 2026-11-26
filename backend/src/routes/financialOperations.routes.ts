@@ -259,7 +259,7 @@ financialOperationsRoutes.put("/card-fees", async (req: AuthenticatedRequest, re
 });
 financialOperationsRoutes.get("/card-forecast", async (req: AuthenticatedRequest, res) => {
   const month = String(req.query.month || new Date().toISOString().slice(0, 7));
-  if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ message: "Mês inválido." });
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ message: "Mês inválido." });
   const from = new Date(month + "-01T00:00:00.000Z");
   const to = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
   const marketId = req.user!.marketId;
