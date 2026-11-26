@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, Pencil, Plus, Power } from "lucide-react";
+import { Eye, EyeOff, Pencil, Plus, Power, Trash2 } from "lucide-react";
 import AdminLayout from "../../components/layout/AdminLayout";
 import type { AppPage } from "../../components/Sidebar/Sidebar";
 import ProductModal from "../../components/products/ProductModal";
 import type { ProductFormData } from "../../types/product";
 import {
   createProductRequest,
+  deleteProductRequest,
   listProductsRequest,
   updateProductRequest,
   type Product,
@@ -43,6 +44,8 @@ export default function ProductsPage({ onLogout, onNavigate }: Props) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -79,6 +82,22 @@ export default function ProductsPage({ onLogout, onNavigate }: Props) {
     await load();
   }
 
+  async function removeProduct(product: Product) {
+    if (!window.confirm(`Excluir definitivamente "${product.name}"?\\n\\nProdutos com estoque, vendas, pedidos ou compras vinculadas não podem ser excluídos. Nesses casos, use Desativar.`)) return;
+    setDeletingId(product.id);
+    setError("");
+    setSuccess("");
+    try {
+      await deleteProductRequest(product.id);
+      await load();
+      setSuccess(`Produto "${product.name}" excluído com sucesso.`);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Não foi possível excluir o produto. Se houver histórico, use Desativar.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <AdminLayout activePage="products" onNavigate={onNavigate} onLogout={onLogout}>
       <div className="page-stack">
@@ -86,7 +105,8 @@ export default function ProductsPage({ onLogout, onNavigate }: Props) {
           <div><h1>Produtos</h1><p>{products.length} cadastrados · {products.filter((item) => item.isVisibleOnline).length} na loja virtual</p></div>
           <button className="primary-button" onClick={() => { setEditing(null); setModalOpen(true); }}><Plus /> Novo Produto</button>
         </div>
-        {error && <p className="feedback-error">{error}</p>}
+        {error && <p role="alert" className="feedback-error">{error}</p>}
+        {success && <p role="status" className="feedback-success">{success}</p>}
         <section className="card table-wrap">
           <table className="data-table">
             <thead><tr><th>Produto</th><th>Categoria</th><th className="right">Balcão</th><th className="right">Online</th><th className="right">Estoque</th><th>Loja virtual</th><th>Status</th><th className="right">Ações</th></tr></thead>
@@ -105,6 +125,7 @@ export default function ProductsPage({ onLogout, onNavigate }: Props) {
                       <button className="icon-button" title="Editar" onClick={() => { setEditing(product); setModalOpen(true); }}><Pencil /></button>
                       <button className="icon-button" title={product.isVisibleOnline ? "Ocultar da loja" : "Publicar"} onClick={() => quickUpdate(product, { isVisibleOnline: !product.isVisibleOnline })}>{product.isVisibleOnline ? <EyeOff /> : <Eye />}</button>
                       <button className="icon-button" title={product.isActive ? "Desativar" : "Ativar"} onClick={() => quickUpdate(product, { isActive: !product.isActive })}><Power /></button>
+                      <button className="icon-button" type="button" title="Excluir produto" aria-label={`Excluir produto ${product.name}`} disabled={deletingId === product.id} onClick={() => void removeProduct(product)}><Trash2 /></button>
                     </div>
                   </td>
                 </tr>
