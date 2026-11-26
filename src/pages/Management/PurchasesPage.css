@@ -38,7 +38,10 @@
   color: var(--primary, #1479ed); font-weight: 650;
   border-top: 1px solid var(--border, #d7dee8); border-radius: 0;
 }
-.purchases-selected-product { color: #166534; }
+.purchases-product-field input.purchases-product-input-selected {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 1px rgba(22, 163, 74, .15);
+}
 .purchases-manual-form {
   border: 1px solid var(--border, #d7dee8); border-radius: 12px;
   padding: 16px; display: grid; gap: 12px;
