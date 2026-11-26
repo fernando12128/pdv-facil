@@ -164,6 +164,42 @@ try {
   assert(otherRules.status === 200 && otherRules.data.rules.length === 0, "Configuração de cartão não vaza entre empresas");
   const forecast = await request("/finance-ops/card-forecast?month=2026-12", { token: tokenA });
   assert(forecast.status === 200 && Array.isArray(forecast.data.forecast), "Previsão de recebíveis disponível");
+  const profile = await request("/auth/me", { token: tokenA });
+  const tenantId = profile.data.market.id;
+  const seed = new Database(dbPath);
+  seed.prepare('INSERT INTO "PaymentSetting" ("id","marketId","type","isEnabled","createdAt","updatedAt") VALUES (?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)')
+    .run("payment-pix-test", tenantId, "PIX");
+  seed.close();
+  const cashSession = await request("/cash-sessions/open", { token: tokenA, method: "POST", body: {
+    registerKey: "PIX-TEST", openingAmount: 0
+  } });
+  assert(cashSession.status === 201, "Caixa de teste aberto");
+  const sale = await request("/sales", { token: tokenA, method: "POST", body: {
+    paymentMethod: "PIX", cashSessionId: cashSession.data.session.id, idempotencyKey: "sale-pix-finance-test",
+    items: [{ productId: product.data.product.id, quantity: 1 }]
+  } });
+  assert(sale.status === 201 && sale.data.sale.total === 20 && sale.data.sale.items[0].costAtSale > 0,
+    "Venda Pix guarda custo histórico para DRE");
+  const pixBank = await request("/finance-ops/transactions/import", { token: tokenA, method: "POST", body: {
+    bankAccountId: idBank, transactions: [{ date: new Date().toISOString().slice(0,10), description: "Pix recebido", amount: 20, externalId: "PIX-EXTRATO-001" }]
+  } });
+  assert(pixBank.status === 201 && pixBank.data.added === 1, "Crédito Pix importado");
+  const pixMovements = await request("/finance-ops/transactions", { token: tokenA });
+  const pixId = pixMovements.data.transactions.find(m => m.externalId === "PIX-EXTRATO-001").id;
+  const pixSuggestions = await request(`/finance-ops/transactions/${pixId}/sale-suggestions`, { token: tokenA });
+  assert(pixSuggestions.status === 200 && pixSuggestions.data.suggestions.some(v => v.id === sale.data.sale.id),
+    "Sistema sugere venda Pix para a entrada bancária");
+  const pixMatched = await request(`/finance-ops/transactions/${pixId}/reconcile-sale`, { token: tokenA, method: "POST", body: {
+    saleId: sale.data.sale.id
+  } });
+  assert(pixMatched.status === 200, "Venda Pix conciliada");
+  const duplicatePix = await request(`/finance-ops/transactions/${pixId}/reconcile-sale`, { token: tokenA, method: "POST", body: {
+    saleId: sale.data.sale.id
+  } });
+  assert(duplicatePix.status === 409, "Recebimento Pix não pode ser conciliado duas vezes");
+  const report = await request(`/finance/reports?month=${new Date().toISOString().slice(0,7)}`, { token: tokenA });
+  assert(report.status === 200 && report.data.dre.salesRevenue >= 20 && report.data.dre.cmv > 0,
+    "DRE contabiliza venda e CMV sem nova receita bancária");
   console.log("Integração romaneio/financeiro aprovada.");
 } catch (error) {
   console.error(error);
