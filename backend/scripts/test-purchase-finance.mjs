@@ -92,13 +92,34 @@ try {
   assert(foreign.status === 200 && foreign.data.entries.every(item => item.purchaseId !== id), "Outra empresa não visualiza lançamento");
   const forbiddenDelete = await request(`/finance/entries/${linked[0].id}`, { token: tokenA, method: "DELETE" });
   assert(forbiddenDelete.status === 409, "Exclusão manual da conta vinculada é bloqueada");
+  const edited = await request(`/purchases/${id}`, { token: tokenA, method: "PUT", body: {
+    supplierId: supplier.data.supplier.id, reference: "ROM-EDITADO-001", dueDate: "2026-12-15", installmentCount: 2,
+    items: [{ productId: product.data.product.id, quantity: 4, unitCost: 15 }]
+  } });
+  assert(edited.status === 200 && edited.data.purchase.total === 60, "Romaneio pendente editado");
+  const editedLedger = await request("/finance/entries", { token: tokenA });
+  const editedEntries = editedLedger.data.entries.filter(entry => entry.purchaseId === id);
+  assert(editedEntries.length === 2 && editedEntries.reduce((sum, entry) => sum + entry.amountCents, 0) === 6000 &&
+    editedEntries.every(entry => entry.status === "OPEN") &&
+    editedEntries[0].description.includes("ROM-EDITADO-001"),
+    "Editar romaneio atualiza parcelas financeiras sem duplicar valores");
+  const otherCompanyEdit = await request(`/purchases/${id}`, { token: tokenB, method: "PUT", body: {
+    supplierId: supplier.data.supplier.id, reference: "INVASAO", dueDate: "2026-12-15", installmentCount: 1,
+    items: [{ productId: product.data.product.id, quantity: 1, unitCost: 20 }]
+  } });
+  assert(otherCompanyEdit.status === 404, "Outra empresa não edita romaneio");
   const receiving = await request(`/purchases/${id}/receive`, { token: tokenA, method: "POST" });
   assert(receiving.status === 200, "Entrada de estoque registrada");
   const duplicate = await request(`/purchases/${id}/receive`, { token: tokenA, method: "POST" });
   assert(duplicate.status === 409, "Recebimento duplicado bloqueado");
   const after = await request("/finance/entries", { token: tokenA });
-  assert(after.data.entries.filter(item => item.purchaseId === id).length === 1, "Recebimento não duplica o financeiro");
-  const paid = await request(`/finance/entries/${linked[0].id}/settle`, { token: tokenA, method: "PATCH" });
+  assert(after.data.entries.filter(item => item.purchaseId === id).length === 2, "Recebimento não duplica o financeiro");
+  const editReceived = await request(`/purchases/${id}`, { token: tokenA, method: "PUT", body: {
+    supplierId: supplier.data.supplier.id, reference: "TENTATIVA", dueDate: "2026-12-15", installmentCount: 1,
+    items: [{ productId: product.data.product.id, quantity: 1, unitCost: 20 }]
+  } });
+  assert(editReceived.status === 409, "Romaneio recebido não permite edição");
+  const paid = await request(`/finance/entries/${editedEntries[0].id}/settle`, { token: tokenA, method: "PATCH" });
   assert(paid.status === 200 && paid.data.entry.status === "SETTLED", "Conta pode ser liquidada no Financeiro");
   const parcelled = await request("/purchases", { token: tokenA, method: "POST", body: {
     supplierId: supplier.data.supplier.id, reference: "ROM-PARCELADO", dueDate: "2026-12-10", installmentCount: 3,
