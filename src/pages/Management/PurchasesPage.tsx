@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, PackageCheck, ClipboardList, Truck } from "lucide-react";
+import { Plus, PackageCheck, ClipboardList, Truck, Pencil } from "lucide-react";
 import AdminLayout from "../../components/layout/AdminLayout";
 import type { AppPage } from "../../components/Sidebar/Sidebar";
 import { createProductRequest, listProductsRequest, type Product } from "../../services/productsService";
@@ -21,6 +21,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [supplierModal, setSupplierModal] = useState(false);
   const [purchaseModal, setPurchaseModal] = useState(false);
+  const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
   const [supplierForm, setSupplierForm] = useState({ name: "", document: "", phone: "", email: "" });
   const [supplierId, setSupplierId] = useState("");
   const [reference, setReference] = useState("");
@@ -63,6 +64,50 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
     finally { setBusy(false); }
   }
 
+  function resetPurchaseForm() {
+    setPurchaseModal(false);
+    setEditingPurchaseId(null);
+    setSupplierId("");
+    setReference("");
+    setDueDate(today());
+    setInstallmentCount(1);
+    setLines([emptyLine()]);
+    setManualProductIndex(null);
+    setActiveProductSearch(null);
+  }
+
+  function openNewPurchase() {
+    resetPurchaseForm();
+    setError("");
+    setMessage("");
+    setPurchaseModal(true);
+  }
+
+  function editPurchase(purchase: Purchase) {
+    if (purchase.status !== "DRAFT" || purchase.financialEntries.length === 0 ||
+        purchase.financialEntries.some(entry => entry.status !== "OPEN" || entry.settledAt || entry.bankTransactionId)) {
+      setError("Somente romaneios pendentes, com todas as parcelas em aberto e não conciliadas, podem ser editados.");
+      return;
+    }
+    const first = purchase.financialEntries[0];
+    setEditingPurchaseId(purchase.id);
+    setSupplierId(purchase.supplier.id);
+    setReference(purchase.reference || "");
+    setDueDate(first.dueDate.slice(0, 10));
+    setInstallmentCount(purchase.financialEntries.length);
+    setLines(purchase.items.map(item => ({
+      productId: item.productId,
+      search: item.product.name,
+      quantity: String(item.quantity),
+      unitCost: String(item.unitCost)
+    })));
+    setManualProductIndex(null);
+    setActiveProductSearch(null);
+    setError("");
+    setMessage("");
+    setPurchaseModal(true);
+  }
+
   async function savePurchase() {
     const items = lines.map(line => ({ productId: line.productId, quantity: Number(line.quantity), unitCost: Number(line.unitCost) }));
     if (!supplierId || !items.length || items.some(i => !i.productId || !Number.isSafeInteger(i.quantity) || i.quantity <= 0 ||
@@ -74,11 +119,17 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
     if (!Number.isSafeInteger(installmentCount) || installmentCount < 1 || installmentCount > 36) return setError("Informe entre 1 e 36 parcelas.");
     setBusy(true); setError(""); setMessage("");
     try {
-      await purchasesService.create({ supplierId, reference, dueDate, installmentCount, items });
+      if (editingPurchaseId) {
+        await purchasesService.update(editingPurchaseId, { supplierId, reference, dueDate, installmentCount, items });
+      } else {
+        await purchasesService.create({ supplierId, reference, dueDate, installmentCount, items });
+      }
       await load();
-      setPurchaseModal(false);
-      setSupplierId(""); setReference(""); setDueDate(today()); setInstallmentCount(1); setLines([emptyLine()]); setManualProductIndex(null); setActiveProductSearch(null);
-      setMessage("Romaneio salvo e conta a pagar criada automaticamente no Financeiro. Confirme a mercadoria ao receber.");
+      const wasEditing = Boolean(editingPurchaseId);
+      resetPurchaseForm();
+      setMessage(wasEditing
+        ? "Romaneio e contas a pagar em aberto atualizados com sucesso."
+        : "Romaneio salvo e conta a pagar criada automaticamente no Financeiro. Confirme a mercadoria ao receber.");
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao salvar compra."); }
     finally { setBusy(false); }
   }
@@ -145,7 +196,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
         <div><h1>Compras</h1><p>Fornecedores, romaneios e entrada de mercadorias</p></div>
         <div className="purchases-heading-actions">
           <button className="outline-button" onClick={() => setSupplierModal(true)}><Truck /> Fornecedor</button>
-          <button className="primary-button" onClick={() => { setError(""); setPurchaseModal(true); }}><Plus /> Nova compra</button>
+          <button className="primary-button" onClick={openNewPurchase}><Plus /> Nova compra</button>
         </div>
       </div>
       {error && <p className="feedback-error" role="alert">{error}</p>}
@@ -169,7 +220,11 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
             </div></details></td>
             <td className="right">{brl(p.total)}</td>
             <td><span className={`badge ${p.status === "RECEIVED" ? "success" : "warning"}`}>{p.status === "RECEIVED" ? "Recebida" : "Pendente"}</span></td>
-            <td className="right">{p.status === "DRAFT" && <button disabled={busy} className="outline-button" onClick={() => receive(p)}>Receber</button>}</td>
+            <td className="right">{p.status === "DRAFT" && <div className="purchases-history-actions">
+              {p.financialEntries.length > 0 && p.financialEntries.every(entry => entry.status === "OPEN" && !entry.settledAt && !entry.bankTransactionId) &&
+                <button disabled={busy} className="outline-button" onClick={() => editPurchase(p)}><Pencil size={14} /> Editar</button>}
+              <button disabled={busy} className="outline-button" onClick={() => receive(p)}>Receber</button>
+            </div>}</td>
           </tr>)}</tbody>
         </table>{!purchases.length && <div className="empty-state">Nenhuma compra registrada.</div>}</div>
       </div>
@@ -190,7 +245,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
     </div></div>}
 
     {purchaseModal && <div className="modal-backdrop"><div className="modal-card wide">
-      <div className="modal-header"><h2>Nova compra / Romaneio</h2><p>Registre a compra e depois confirme o recebimento das mercadorias.</p></div>
+      <div className="modal-header"><h2>{editingPurchaseId ? "Editar compra / Romaneio" : "Nova compra / Romaneio"}</h2><p>{editingPurchaseId ? "Alterações atualizam as parcelas em aberto no Financeiro. Compras já recebidas não podem ser editadas." : "Registre a compra e depois confirme o recebimento das mercadorias."}</p></div>
       <div className="modal-body">
         <div className="form-grid">
           <div className="field"><label>Fornecedor</label><select value={supplierId} onChange={e => setSupplierId(e.target.value)}>
@@ -253,11 +308,11 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
           </div>
         </section>}
         <button className="outline-button" onClick={() => { setActiveProductSearch(null); setLines(current => [...current, emptyLine()]); }}><Plus /> Adicionar produto</button>
-        <p className="purchases-note">Ao salvar, uma conta a pagar será criada automaticamente no Financeiro, mesmo antes de receber a mercadoria.</p>
+        <p className="purchases-note">{editingPurchaseId ? "Ao salvar, as contas a pagar ainda em aberto serão atualizadas no Financeiro." : "Ao salvar, uma conta a pagar será criada automaticamente no Financeiro, mesmo antes de receber a mercadoria."}</p>
         <p className="purchases-total">Total da compra: <strong>{brl(total)}</strong></p>
       </div>
-      <div className="modal-actions"><button className="outline-button" disabled={busy} onClick={() => { setPurchaseModal(false); setManualProductIndex(null); setActiveProductSearch(null); }}>Cancelar</button>
-        <button className="primary-button" disabled={busy} onClick={savePurchase}>Salvar romaneio</button></div>
+      <div className="modal-actions"><button className="outline-button" disabled={busy} onClick={resetPurchaseForm}>Cancelar</button>
+        <button className="primary-button" disabled={busy} onClick={savePurchase}>{editingPurchaseId ? "Salvar alterações" : "Salvar romaneio"}</button></div>
     </div></div>}
   </AdminLayout>;
 }
