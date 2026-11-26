@@ -114,10 +114,10 @@ financialOperationsRoutes.get("/transactions/:id/suggestions", async (req: Authe
   const movement = await prisma.bankTransaction.findFirst({ where: { id: req.params.id, marketId, status: "UNMATCHED" } });
   if (!movement) return res.status(404).json({ message: "Movimentação não encontrada ou já conciliada." });
   const entries = await prisma.financialEntry.findMany({ where: {
-    marketId, status: "OPEN", bankTransactionId: null,
+    marketId, status: { in: ["OPEN", "SETTLED"] }, bankTransactionId: null,
     type: movement.amountCents < 0 ? "PAYABLE" : "RECEIVABLE",
     amountCents: Math.abs(movement.amountCents),
-    dueDate: { gte: new Date(movement.date.getTime() - 7 * 86400000), lte: new Date(movement.date.getTime() + 7 * 86400000) }
+    dueDate: { gte: new Date(movement.date.getTime() - 30 * 86400000), lte: new Date(movement.date.getTime() + 30 * 86400000) }
   }, orderBy: { dueDate: "asc" }, take: 20 });
   return res.json({ suggestions: entries.map(e => ({ ...e, amount: money(e.amountCents) })) });
 });
@@ -127,7 +127,7 @@ financialOperationsRoutes.post("/transactions/:id/reconcile", async (req: Authen
   try {
     const result = await prisma.$transaction(async tx => {
       const movement = await tx.bankTransaction.findFirst({ where: { id: req.params.id, marketId, status: "UNMATCHED" } });
-      const entry = await tx.financialEntry.findFirst({ where: { id: entryId, marketId, status: "OPEN", bankTransactionId: null } });
+      const entry = await tx.financialEntry.findFirst({ where: { id: entryId, marketId, status: { in: ["OPEN", "SETTLED"] }, bankTransactionId: null } });
       if (!movement || !entry) return "NOT_FOUND";
       if (entry.amountCents !== Math.abs(movement.amountCents) ||
           entry.type !== (movement.amountCents < 0 ? "PAYABLE" : "RECEIVABLE")) return "MISMATCH";
@@ -148,6 +148,35 @@ financialOperationsRoutes.post("/transactions/:id/reconcile", async (req: Authen
     return res.json({ message: "Conciliação registrada." });
   } catch (err) { console.error(err); return res.status(500).json({ message: "Falha ao conciliar." }); }
 });
+// Classifica movimentações que não possuem lançamento prévio (ex.: tarifa bancária).
+financialOperationsRoutes.post("/transactions/:id/classify", async (req: AuthenticatedRequest, res) => {
+  const marketId = req.user!.marketId;
+  const category = typeof req.body?.category === "string" ? req.body.category.trim() : "";
+  if (!category || category.length > 100)
+    return res.status(400).json({ message: "Informe uma categoria (até 100 caracteres)." });
+  try {
+    const entry = await prisma.$transaction(async tx => {
+      const movement = await tx.bankTransaction.findFirst({ where: { id: req.params.id, marketId, status: "UNMATCHED" } });
+      if (!movement) return null;
+      const claimed = await tx.bankTransaction.updateMany({
+        where: { id: movement.id, marketId, status: "UNMATCHED" }, data: { status: "MATCHED" }
+      });
+      if (!claimed.count) return null;
+      const created = await tx.financialEntry.create({ data: {
+        marketId, bankTransactionId: movement.id,
+        type: movement.amountCents < 0 ? "PAYABLE" : "RECEIVABLE",
+        category, description: movement.description,
+        amountCents: Math.abs(movement.amountCents), dueDate: movement.date,
+        settledAt: movement.date, status: "SETTLED",
+        notes: "Gerado por classificação manual de extrato bancário."
+      } });
+      await audit(tx, marketId, req.user!.userId, "CLASSIFY", "BANK_TRANSACTION", movement.id, created.id);
+      return created;
+    });
+    return entry ? res.status(201).json({ entry }) : res.status(409).json({ message: "Movimentação já conciliada ou inexistente." });
+  } catch (error) { console.error(error); return res.status(500).json({ message: "Falha ao classificar." }); }
+});
+
 financialOperationsRoutes.get("/recurrences", async (req: AuthenticatedRequest, res) => {
   return res.json({ rules: await prisma.recurringRule.findMany({ where: { marketId: req.user!.marketId }, orderBy: { createdAt: "desc" } }) });
 });
