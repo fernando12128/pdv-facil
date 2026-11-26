@@ -26,7 +26,7 @@ export const purchasesService = {
   createSupplier: (data: { name: string; document?: string; phone?: string; email?: string }) =>
     apiRequest<{ supplier: Supplier }>("/purchases/suppliers", { method: "POST", token: token(), body: data }),
   list: () => apiRequest<{ purchases: Purchase[] }>("/purchases", { token: token() }),
-  create: (data: { supplierId: string; reference?: string; dueDate: string; items: Array<{ productId: string; quantity: number; unitCost: number }> }) =>
+  create: (data: { supplierId: string; reference?: string; dueDate: string; installmentCount?: number; items: Array<{ productId: string; quantity: number; unitCost: number }> }) =>
     apiRequest<{ purchase: Purchase }>("/purchases", { method: "POST", token: token(), body: data }),
   receive: (id: string) =>
     apiRequest<{ message: string }>(`/purchases/${id}/receive`, { method: "POST", token: token() })
