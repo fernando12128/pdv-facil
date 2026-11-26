@@ -309,44 +309,44 @@ productsRoutes.put("/:id", async (req: AuthenticatedRequest, res) => {
 });
 
 productsRoutes.delete("/:id", async (req: AuthenticatedRequest, res) => {
+  if (!req.user) return res.status(401).json({ message: "Não autenticado." });
+  if (!["OWNER", "MANAGER"].includes(req.user.role)) {
+    return res.status(403).json({ message: "Apenas administradores podem excluir produtos." });
+  }
+
+  const marketId = req.user.marketId;
+  const id = req.params.id;
+
   try {
-    if (!req.user) {
-      return res.status(401).json({
-        message: "Não autenticado.",
-      });
-    }
+    const result = await prisma.$transaction(async (tx) => {
+      const product = await tx.product.findFirst({ where: { id, marketId } });
+      if (!product) return { status: 404, message: "Produto não encontrado." };
 
-    const { id } = req.params;
+      // Exclusão física só é segura para produtos sem estoque e sem histórico.
+      if (product.stock !== 0) {
+        return { status: 409, message: "Este produto possui estoque. Ajuste-o pelo fluxo de inventário ou desative o produto para preservar o histórico." };
+      }
 
-    const existingProduct = await prisma.product.findFirst({
-      where: {
-        id,
-        marketId: req.user.marketId,
-      },
+      const [sales, orders, purchases] = await Promise.all([
+        tx.saleItem.count({ where: { productId: id, sale: { marketId } } }),
+        tx.onlineOrderItem.count({ where: { productId: id, order: { marketId } } }),
+        tx.purchaseItem.count({ where: { productId: id, purchase: { marketId } } })
+      ]);
+      if (sales || orders || purchases) {
+        return { status: 409, message: "Este produto já possui vendas, pedidos ou compras registradas. Para manter o histórico, utilize Desativar." };
+      }
+
+      await tx.product.delete({ where: { id } });
+      return { status: 200, message: "Produto excluído com sucesso." };
     });
-
-    if (!existingProduct) {
-      return res.status(404).json({
-        message: "Produto não encontrado.",
-      });
-    }
-
-    await prisma.product.delete({
-      where: {
-        id,
-      },
-    });
-
-    return res.json({
-      message: "Produto excluído com sucesso.",
-    });
+    return res.status(result.status).json({ message: result.message });
   } catch (error) {
+    // A FK continua protegendo o histórico contra uma referência concorrente.
+    if (error && typeof error === "object" && "code" in error && (error.code === "P2003" || error.code === "P2014")) {
+      return res.status(409).json({ message: "Produto vinculado a movimentações. Desative-o para preservar o histórico." });
+    }
     console.error(error);
-
-    return res.status(500).json({
-      message:
-        "Erro ao excluir produto. Se este produto já tiver vendas, tente desativá-lo em vez de excluir.",
-    });
+    return res.status(500).json({ message: "Erro ao excluir produto." });
   }
 });
 
