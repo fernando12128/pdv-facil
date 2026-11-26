@@ -304,6 +304,7 @@ salesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
             productName: product.name,
             quantity: item.quantity,
             unitPrice: product.salePrice,
+            costAtSale: product.cost,
             total: roundMoney(product.salePrice * item.quantity),
           },
         });
