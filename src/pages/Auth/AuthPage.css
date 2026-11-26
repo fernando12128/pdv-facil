@@ -37,6 +37,23 @@
   font-size: 14px;
 }
 
+.auth-flow-heading {
+  margin-top: 20px;
+  text-align: left;
+}
+
+.auth-flow-heading h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.auth-flow-heading p {
+  margin: 6px 0 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .auth-tabs {
   height: 38px;
   padding: 3px;
@@ -93,6 +110,11 @@
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
+.auth-hint {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
 .submit-button {
   height: 38px;
   border: 0;
@@ -105,6 +127,55 @@
 
 .submit-button:disabled {
   opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.auth-dev-token {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #f3d38a;
+  border-radius: 9px;
+  padding: 11px;
+  background: #fff9e9;
+  color: #72520a;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.auth-dev-token code {
+  border-radius: 6px;
+  padding: 8px;
+  background: #fff;
+  color: #2f2a20;
+  font-size: 11px;
+  user-select: all;
+}
+
+.auth-text-button {
+  width: fit-content;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.auth-text-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.auth-secondary-action {
+  display: block;
+  margin: 14px auto 0;
+}
+
+.auth-back-button {
+  display: block;
+  margin: 12px auto 0;
 }
 
 .auth-error,
