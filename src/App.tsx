@@ -10,6 +10,7 @@ import CategoriesPage from "./pages/Management/CategoriesPage";
 import CustomersPage from "./pages/Management/CustomersPage";
 import EmployeesPage from "./pages/Management/EmployeesPage";
 import InventoryPage from "./pages/Management/InventoryPage";
+import PurchasesPage from "./pages/Management/PurchasesPage";
 import PaymentsPage from "./pages/Management/PaymentsPage";
 import ReportsPage from "./pages/Management/ReportsPage";
 import OnlineOrdersPage from "./pages/Management/OnlineOrdersPage";
@@ -24,6 +25,7 @@ const pagePaths: Record<AppPage, string> = {
   products: "/admin/produtos",
   categories: "/admin/categorias",
   inventory: "/admin/estoque",
+  purchases: "/admin/compras",
   customers: "/admin/clientes",
   employees: "/admin/funcionarios",
   sales: "/admin/vendas",
@@ -106,6 +108,7 @@ export default function App() {
     products: <ProductsPage {...props} />,
     categories: <CategoriesPage {...props} />,
     inventory: <InventoryPage {...props} />,
+    purchases: <PurchasesPage {...props} />,
     customers: <CustomersPage {...props} />,
     employees: <EmployeesPage {...props} />,
     sales: <SalesPage {...props} />,
