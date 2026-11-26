@@ -2,15 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, PackageCheck, ClipboardList, Truck } from "lucide-react";
 import AdminLayout from "../../components/layout/AdminLayout";
 import type { AppPage } from "../../components/Sidebar/Sidebar";
-import { listProductsRequest, type Product } from "../../services/productsService";
+import { createProductRequest, listProductsRequest, type Product } from "../../services/productsService";
 import { purchasesService, type Purchase, type Supplier } from "../../services/purchasesService";
 import "./ManagementPages.css";
 import "./PurchasesPage.css";
 
 type Props = { onLogout: () => void; onNavigate: (page: AppPage) => void };
-type Line = { productId: string; quantity: string; unitCost: string };
+type Line = { productId: string; search: string; quantity: string; unitCost: string };
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const emptyLine = (): Line => ({ productId: "", quantity: "1", unitCost: "0" });
+const emptyLine = (): Line => ({ productId: "", search: "", quantity: "1", unitCost: "0" });
+const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const moneyInput = (value: string) => Number(value.replace(/\D/g, "").slice(0, 12)) / 100;
 const today = () => new Date().toLocaleDateString("en-CA");
 
 export default function PurchasesPage({ onLogout, onNavigate }: Props) {
@@ -28,6 +30,9 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [activeProductSearch, setActiveProductSearch] = useState<number | null>(null);
+  const [manualProductIndex, setManualProductIndex] = useState<number | null>(null);
+  const [manualProduct, setManualProduct] = useState({ name: "", sku: "", salePrice: "", cost: "" });
 
   async function load() {
     const [supplierData, productData, purchaseData] = await Promise.all([
@@ -72,7 +77,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
       await purchasesService.create({ supplierId, reference, dueDate, installmentCount, items });
       await load();
       setPurchaseModal(false);
-      setSupplierId(""); setReference(""); setDueDate(today()); setInstallmentCount(1); setLines([emptyLine()]);
+      setSupplierId(""); setReference(""); setDueDate(today()); setInstallmentCount(1); setLines([emptyLine()]); setManualProductIndex(null); setActiveProductSearch(null);
       setMessage("Romaneio salvo e conta a pagar criada automaticamente no Financeiro. Confirme a mercadoria ao receber.");
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao salvar compra."); }
     finally { setBusy(false); }
@@ -86,6 +91,47 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
       await load();
       setMessage("Recebimento confirmado. Estoque e custos atualizados.");
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao confirmar entrada."); }
+    finally { setBusy(false); }
+  }
+
+  function selectProduct(index: number, product: Product) {
+    updateLine(index, { productId: product.id, search: product.name, unitCost: String(product.cost) });
+    setActiveProductSearch(null);
+    setManualProductIndex(null);
+  }
+
+  function startManualProduct(index: number) {
+    setActiveProductSearch(null);
+    setManualProductIndex(index);
+    setManualProduct({ name: lines[index].search.trim(), sku: "", salePrice: "", cost: lines[index].unitCost === "0" ? "" : brl(Number(lines[index].unitCost)) });
+    setError("");
+  }
+
+  async function saveManualProduct(index: number) {
+    const name = manualProduct.name.trim();
+    const salePrice = moneyInput(manualProduct.salePrice);
+    const cost = moneyInput(manualProduct.cost);
+    if (!name || name.length > 160 || !manualProduct.salePrice || !manualProduct.cost) {
+      setError("Informe nome, preço de venda e custo do produto.");
+      return;
+    }
+    if (products.some(p => normalizeSearch(p.name) === normalizeSearch(name) && (p.sku || "") === manualProduct.sku.trim())) {
+      setError("Já existe um produto com esse nome e SKU. Procure-o na lista para evitar duplicação.");
+      return;
+    }
+    setBusy(true); setError("");
+    try {
+      const result = await createProductRequest({
+        name, sku: manualProduct.sku.trim(), barcode: "", category: "", brand: "",
+        isActive: true, salePrice, cost, useSameOnlinePrice: true, onlinePrice: salePrice,
+        stock: 0, minStock: 0, allowBackorder: false, isVisibleOnline: false,
+        description: "", imageUrl: "", isFeatured: false, allowPickup: true, allowDelivery: true
+      });
+      setProducts(previous => [result.product, ...previous]);
+      selectProduct(index, result.product);
+      setManualProduct({ name: "", sku: "", salePrice: "", cost: "" });
+      setMessage("Produto cadastrado no catálogo com estoque inicial zero. Ele será incluído no romaneio.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível cadastrar produto."); }
     finally { setBusy(false); }
   }
 
@@ -156,20 +202,61 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
         </div>
         <div className="purchases-lines">
           {lines.map((line, index) => <div className="purchases-line" key={index}>
-            <div className="field"><label>Produto</label><select value={line.productId} onChange={e => {
-              const item = products.find(p => p.id === e.target.value);
-              updateLine(index, { productId: e.target.value, unitCost: String(item?.cost ?? 0) });
-            }}><option value="">Selecione</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+            <div className="field purchases-product-field"><label>Produto (nome, SKU ou código de barras)</label>
+              <input
+                aria-label={`Pesquisar produto da linha ${index + 1}`}
+                role="combobox"
+                aria-expanded={activeProductSearch === index}
+                aria-controls={`purchase-products-${index}`}
+                autoComplete="off"
+                placeholder="Digite para pesquisar..."
+                value={line.search}
+                onFocus={() => setActiveProductSearch(index)}
+                onChange={e => { updateLine(index, { productId: "", search: e.target.value }); setActiveProductSearch(index); }}
+                onKeyDown={e => {
+                  if (e.key === "Escape") setActiveProductSearch(null);
+                  if (e.key === "Enter" && activeProductSearch === index) {
+                    const query = normalizeSearch(line.search);
+                    const matching = products.filter(p => normalizeSearch([p.name, p.sku || "", p.barcode || ""].join(" ")).includes(query) && !lines.some((l, i) => i !== index && l.productId === p.id));
+                    if (matching.length === 1) { e.preventDefault(); selectProduct(index, matching[0]); }
+                  }
+                }}
+              />
+              {line.productId && <small className="purchases-selected-product">✓ Produto selecionado</small>}
+              {activeProductSearch === index && <div id={`purchase-products-${index}`} className="purchases-product-results" role="listbox">
+                {products.filter(p => normalizeSearch([p.name, p.sku || "", p.barcode || ""].join(" ")).includes(normalizeSearch(line.search)) &&
+                  !lines.some((l, i) => i !== index && l.productId === p.id)).slice(0, 30).map(p =>
+                  <button type="button" role="option" aria-selected={p.id === line.productId} key={p.id} onClick={() => selectProduct(index, p)}>
+                    <strong>{p.name}</strong><small>{p.sku ? `SKU: ${p.sku} · ` : ""}{p.barcode ? `EAN: ${p.barcode} · ` : ""}Custo: {brl(p.cost)}</small>
+                  </button>)}
+                {!products.some(p => normalizeSearch([p.name, p.sku || "", p.barcode || ""].join(" ")).includes(normalizeSearch(line.search)) &&
+                  !lines.some((l, i) => i !== index && l.productId === p.id)) && <p>Nenhum produto encontrado.</p>}
+                <button className="purchases-manual-option" type="button" onClick={() => startManualProduct(index)}>+ Cadastrar produto manualmente</button>
+              </div>}
+            </div>
             <div className="field"><label>Qtd.</label><input type="number" min="1" step="1" value={line.quantity} onChange={e => updateLine(index, { quantity: e.target.value })} /></div>
             <div className="field"><label>Custo unitário</label><input type="number" min="0" step="0.01" value={line.unitCost} onChange={e => updateLine(index, { unitCost: e.target.value })} /></div>
             <button className="outline-button" type="button" aria-label="Remover linha" disabled={lines.length === 1} onClick={() => setLines(current => current.filter((_, i) => i !== index))}>×</button>
           </div>)}
         </div>
-        <button className="outline-button" onClick={() => setLines(current => [...current, emptyLine()])}><Plus /> Adicionar produto</button>
+        {manualProductIndex !== null && <section className="purchases-manual-form">
+          <div><strong>Novo produto no catálogo</strong><p className="purchases-note">O produto será cadastrado com estoque zero e vinculado a esta compra. O estoque só aumentará ao confirmar o recebimento.</p></div>
+          <div className="form-grid">
+            <div className="field"><label>Nome do produto</label><input maxLength={160} value={manualProduct.name} onChange={e => setManualProduct(v => ({ ...v, name: e.target.value }))} /></div>
+            <div className="field"><label>SKU (opcional)</label><input maxLength={100} value={manualProduct.sku} onChange={e => setManualProduct(v => ({ ...v, sku: e.target.value }))} /></div>
+            <div className="field"><label>Preço de venda (R$)</label><input inputMode="numeric" placeholder="R$ 0,00" value={manualProduct.salePrice} onChange={e => setManualProduct(v => ({ ...v, salePrice: brl(moneyInput(e.target.value)) }))} /></div>
+            <div className="field"><label>Custo unitário (R$)</label><input inputMode="numeric" placeholder="R$ 0,00" value={manualProduct.cost} onChange={e => setManualProduct(v => ({ ...v, cost: brl(moneyInput(e.target.value)) }))} /></div>
+          </div>
+          <div className="purchases-manual-actions">
+            <button type="button" className="outline-button" disabled={busy} onClick={() => setManualProductIndex(null)}>Cancelar</button>
+            <button type="button" className="primary-button" disabled={busy} onClick={() => void saveManualProduct(manualProductIndex)}>Cadastrar e selecionar</button>
+          </div>
+        </section>}
+        <button className="outline-button" onClick={() => { setActiveProductSearch(null); setLines(current => [...current, emptyLine()]); }}><Plus /> Adicionar produto</button>
         <p className="purchases-note">Ao salvar, uma conta a pagar será criada automaticamente no Financeiro, mesmo antes de receber a mercadoria.</p>
         <p className="purchases-total">Total da compra: <strong>{brl(total)}</strong></p>
       </div>
-      <div className="modal-actions"><button className="outline-button" disabled={busy} onClick={() => setPurchaseModal(false)}>Cancelar</button>
+      <div className="modal-actions"><button className="outline-button" disabled={busy} onClick={() => { setPurchaseModal(false); setManualProductIndex(null); setActiveProductSearch(null); }}>Cancelar</button>
         <button className="primary-button" disabled={busy} onClick={savePurchase}>Salvar romaneio</button></div>
     </div></div>}
   </AdminLayout>;
