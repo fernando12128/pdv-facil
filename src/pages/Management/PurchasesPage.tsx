@@ -11,6 +11,7 @@ type Props = { onLogout: () => void; onNavigate: (page: AppPage) => void };
 type Line = { productId: string; quantity: string; unitCost: string };
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const emptyLine = (): Line => ({ productId: "", quantity: "1", unitCost: "0" });
+const today = () => new Date().toLocaleDateString("en-CA");
 
 export default function PurchasesPage({ onLogout, onNavigate }: Props) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -21,6 +22,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
   const [supplierForm, setSupplierForm] = useState({ name: "", document: "", phone: "", email: "" });
   const [supplierId, setSupplierId] = useState("");
   const [reference, setReference] = useState("");
+  const [dueDate, setDueDate] = useState(today);
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -65,11 +67,11 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
     }
     setBusy(true); setError(""); setMessage("");
     try {
-      await purchasesService.create({ supplierId, reference, items });
+      await purchasesService.create({ supplierId, reference, dueDate, items });
       await load();
       setPurchaseModal(false);
-      setSupplierId(""); setReference(""); setLines([emptyLine()]);
-      setMessage("Romaneio salvo. Confirme o recebimento após conferir a mercadoria.");
+      setSupplierId(""); setReference(""); setDueDate(today()); setLines([emptyLine()]);
+      setMessage("Romaneio salvo e conta a pagar criada automaticamente no Financeiro. Confirme a mercadoria ao receber.");
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao salvar compra."); }
     finally { setBusy(false); }
   }
@@ -147,6 +149,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
             <option value="">Selecione</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select></div>
           <div className="field"><label>Nº do pedido / Romaneio</label><input maxLength={100} value={reference} onChange={e => setReference(e.target.value)} /></div>
+          <div className="field"><label>Vencimento da conta a pagar</label><input type="date" required value={dueDate} onChange={e => setDueDate(e.target.value)} /></div>
         </div>
         <div className="purchases-lines">
           {lines.map((line, index) => <div className="purchases-line" key={index}>
@@ -160,6 +163,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
           </div>)}
         </div>
         <button className="outline-button" onClick={() => setLines(current => [...current, emptyLine()])}><Plus /> Adicionar produto</button>
+        <p className="purchases-note">Ao salvar, uma conta a pagar será criada automaticamente no Financeiro, mesmo antes de receber a mercadoria.</p>
         <p className="purchases-total">Total da compra: <strong>{brl(total)}</strong></p>
       </div>
       <div className="modal-actions"><button className="outline-button" disabled={busy} onClick={() => setPurchaseModal(false)}>Cancelar</button>
