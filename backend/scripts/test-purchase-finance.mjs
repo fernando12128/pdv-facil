@@ -86,6 +86,27 @@ try {
   const removed = await request(`/products/${disposableId}`, { token: tokenA, method: "DELETE" });
   assert(removed.status === 200, "Exclusão definitiva de produto sem histórico funciona");
 
+  const oldProduct = await request("/products", { token: tokenA, method: "POST", body: {
+    name: "Produto sem giro", salePrice: 21, cost: 8, stock: 7
+  } });
+  assert(oldProduct.status === 201, "Produto de baixo giro criado");
+  // Simula produto antigo com estoque, sem nunca vender. O banco é descartável.
+  const ageDb = new Database(dbPath);
+  ageDb.prepare('UPDATE "Product" SET "createdAt" = ? WHERE "id" = ?')
+    .run(Date.now() - 40 * 86400000, oldProduct.data.product.id);
+  ageDb.close();
+  const rotation = await request("/management/stock/rotation", { token: tokenA });
+  const stalled = rotation.data?.items?.find(item => item.id === oldProduct.data.product.id);
+  assert(rotation.status === 200 && stalled?.neverSold && stalled.daysWithoutSales >= 30 &&
+    stalled.capitalCents === 5600, "Estoque parado identifica produto antigo sem venda e custo do saldo");
+  const young = rotation.data.items.find(item => item.id === product.data.product.id);
+  assert(young?.status === "NEW", "Produto recém-cadastrado não gera alerta de 14 dias");
+  const dashboardSlow = await request("/dashboard", { token: tokenA });
+  assert(dashboardSlow.status === 200 && dashboardSlow.data.slowStockCount >= 1 &&
+    dashboardSlow.data.slowStockCapitalCents >= 5600, "Dashboard sinaliza estoque sem giro");
+  const tenantRotation = await request("/management/stock/rotation", { token: tokenB });
+  assert(tenantRotation.status === 200 && !tenantRotation.data.items.some(item => item.id === oldProduct.data.product.id),
+    "Produtos sem giro isolados entre empresas");
   const supplier = await request("/purchases/suppliers", { token: tokenA, method: "POST", body: { name: "Distribuidora Teste" } });
   assert(supplier.status === 201, "Fornecedor criado");
   const dueDate = "2026-12-10";
