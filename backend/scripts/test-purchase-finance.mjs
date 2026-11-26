@@ -21,7 +21,11 @@ db.close();
 const port = await new Promise((resolve, reject) => {
   const server = createServer();
   server.on("error", reject);
-  server.listen(0, "127.0.0.1", () => server.close(() => resolve(server.address()?.port ?? 0)));
+  server.listen(0, "127.0.0.1", () => {
+    const address = server.address();
+    const port = address && typeof address !== "string" ? address.port : 0;
+    server.close(() => resolve(port));
+  });
 });
 const base = `http://127.0.0.1:${port}`;
 const server = spawn(process.execPath, ["--import", "tsx", "src/server.ts"], {
