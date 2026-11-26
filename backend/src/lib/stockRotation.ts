@@ -17,7 +17,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const roundCents = (value: number) => Math.round(value * 100);
 
 /**
- * Giro por produto, considerando vendas de balcão concluídas e pedidos online entregues.
+ * Giro por produto, considerando vendas de balcão concluídas e pedidos online entregues (data da última atualização do pedido).
  * Produtos novos só passam a ser contados depois de 14 dias de cadastro.
  * Estoque zerado/inativo é excluído dos alertas.
  */
@@ -34,9 +34,9 @@ export async function getStockRotation(marketId: string, now = new Date()) {
       },
       onlineOrderItems: {
         where: { order: { marketId, status: "DELIVERED" } },
-        orderBy: { order: { createdAt: "desc" } },
+        orderBy: { order: { updatedAt: "desc" } },
         take: 1,
-        select: { order: { select: { createdAt: true } } }
+        select: { order: { select: { updatedAt: true } } }
       }
     },
     orderBy: { name: "asc" }
@@ -44,7 +44,7 @@ export async function getStockRotation(marketId: string, now = new Date()) {
 
   const items: SlowStockItem[] = products.map(product => {
     const lastCounter = product.saleItems[0]?.sale.createdAt.getTime() ?? 0;
-    const lastOnline = product.onlineOrderItems[0]?.order.createdAt.getTime() ?? 0;
+    const lastOnline = product.onlineOrderItems[0]?.order.updatedAt.getTime() ?? 0;
     const lastSale = Math.max(lastCounter, lastOnline);
     const neverSold = lastSale === 0;
     const referenceTime = Math.max(lastSale, product.createdAt.getTime());
