@@ -74,6 +74,18 @@ try {
     name: "Produto Teste", salePrice: 20, cost: 10, stock: 5
   } });
   assert(product.status === 201, "Produto criado");
+  const withStock = await request(`/products/${product.data.product.id}`, { token: tokenA, method: "DELETE" });
+  assert(withStock.status === 409, "Exclusão de produto com estoque é bloqueada");
+  const disposable = await request("/products", { token: tokenA, method: "POST", body: {
+    name: "Produto descartável", salePrice: 5, cost: 2, stock: 0
+  } });
+  assert(disposable.status === 201, "Produto sem histórico criado");
+  const disposableId = disposable.data.product.id;
+  const foreignDelete = await request(`/products/${disposableId}`, { token: tokenB, method: "DELETE" });
+  assert(foreignDelete.status === 404, "Outra empresa não pode excluir produto");
+  const removed = await request(`/products/${disposableId}`, { token: tokenA, method: "DELETE" });
+  assert(removed.status === 200, "Exclusão definitiva de produto sem histórico funciona");
+
   const supplier = await request("/purchases/suppliers", { token: tokenA, method: "POST", body: { name: "Distribuidora Teste" } });
   assert(supplier.status === 201, "Fornecedor criado");
   const dueDate = "2026-12-10";
@@ -82,6 +94,8 @@ try {
     items: [{ productId: product.data.product.id, quantity: 4, unitCost: 12.5 }]
   } });
   assert(purchase.status === 201 && purchase.data.purchase.total === 50, "Romaneio criado");
+  const historicalDelete = await request(`/products/${product.data.product.id}`, { token: tokenA, method: "DELETE" });
+  assert(historicalDelete.status === 409, "Produto usado em compra continua protegido");
   const id = purchase.data.purchase.id;
   const ledger = await request("/finance/entries", { token: tokenA });
   const linked = ledger.data.entries.filter(item => item.purchaseId === id);
