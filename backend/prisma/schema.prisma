@@ -78,6 +78,7 @@ model Market {
   recurringRules RecurringRule[]
   financeAuditLogs FinanceAuditLog[]
   cardFeeRules CardFeeRule[]
+  fiscalSettings FiscalSettings?
 }
 
 enum UserRole {
@@ -96,6 +97,12 @@ model Product {
   barcode  String?
   category String?
   brand    String?
+  ncm      String?
+  cest     String?
+  cfop     String?
+  fiscalUnit String? @default("UN")
+  originCode String? @default("0")
+  taxSituation String?
 
   isActive Boolean @default(true)
 
@@ -541,4 +548,30 @@ model BankTransactionSale {
   bankTransaction BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Restrict)
   sale ProductSale @relation(fields: [saleId], references: [id], onDelete: Restrict)
   @@index([marketId, createdAt])
+}
+
+model FiscalSettings {
+  id String @id @default(uuid())
+  marketId String @unique
+  legalName String?
+  tradeName String?
+  cnpj String?
+  stateRegistration String?
+  taxRegime String?
+  stateCode String?
+  cityName String?
+  cityIbgeCode String?
+  postalCode String?
+  street String?
+  streetNumber String?
+  district String?
+  complementaryAddress String?
+  fiscalProvider String @default("FOCUS_NFE")
+  environment String @default("HOMOLOGATION")
+  issuanceEnabled Boolean @default(false)
+  receiptWidth Int @default(80)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  market Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
 }
