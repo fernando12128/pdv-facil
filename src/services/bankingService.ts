@@ -10,6 +10,9 @@ export const bankingService = {
   accounts: () => apiRequest<{ accounts: BankAccount[] }>(base + "/accounts", { token: token() }),
   createAccount: (data: { name: string; bankName: string; accountType: string; lastFour?: string }) =>
     apiRequest<{ account: BankAccount }>(base + "/accounts", { method: "POST", token: token(), body: data }),
+  cardFees: () => apiRequest<{ rules: Array<{ id: string; paymentMethod: string; providerName: string; feeBps: number; settlementDays: number }> }>(base + "/card-fees", { token: token() }),
+  saveCardFee: (data: { paymentMethod: "CREDIT" | "DEBIT"; providerName: string; feePercent: number; settlementDays: number }) => apiRequest<{ rule: { id: string } }>(base + "/card-fees", { method: "PUT", token: token(), body: data }),
+  cardForecast: (month: string) => apiRequest<{ forecast: Array<{ saleId: string; paymentMethod: string; provider: string | null; gross: number; fee: number | null; net: number | null; expectedAt: string | null }>; notice: string }>(base + `/card-forecast?month=${encodeURIComponent(month)}`, { token: token() }),
   connectors: () => apiRequest<{ providers: Array<{ id: string; label: string; status: string }>; mode: string }>(base + "/connectors", { token: token() }),
   transactions: () => apiRequest<{ transactions: BankTransaction[] }>(base + "/transactions", { token: token() }),
   importTransactions: (data: { bankAccountId: string; transactions: Array<{ date: string; description: string; amount: number; externalId?: string }> }) =>
