@@ -13,6 +13,8 @@ export type DashboardData = {
   productsCount: number;
   activeProductsCount: number;
   lowStockCount: number;
+  slowStockCount: number;
+  slowStockCapitalCents: number;
   onlineOrdersToday: number;
   cashOpenedAt: string | null;
   chart: DashboardChartItem[];

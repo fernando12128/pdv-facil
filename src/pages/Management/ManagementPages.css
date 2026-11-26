@@ -220,3 +220,10 @@
     height: 39px;
   }
 }
+
+/* Filtros de giro e capital parado do estoque. */
+.inventory-filters { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.inventory-filters .search-row { flex: 1 1 240px; }
+.inventory-filter-select { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted-foreground); }
+.inventory-filter-select select { height: 39px; min-width: 220px; border: 1px solid var(--input); border-radius: 8px; background: var(--card, #fff); color: var(--foreground); padding: 0 10px; }
+@media (max-width: 640px) { .inventory-filter-select, .inventory-filter-select select { width: 100%; } }

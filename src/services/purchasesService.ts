@@ -18,6 +18,7 @@ export type Purchase = {
   createdAt: string;
   receivedAt: string | null;
   supplier: { id: string; name: string };
+  financialEntries: Array<{ id: string; dueDate: string; status: string; amountCents: number; installmentNumber: number | null; installmentCount: number | null; bankTransactionId: string | null; settledAt: string | null }>;
   items: PurchaseItem[];
 };
 const token = () => localStorage.getItem("pdv_facil_token");
@@ -26,8 +27,10 @@ export const purchasesService = {
   createSupplier: (data: { name: string; document?: string; phone?: string; email?: string }) =>
     apiRequest<{ supplier: Supplier }>("/purchases/suppliers", { method: "POST", token: token(), body: data }),
   list: () => apiRequest<{ purchases: Purchase[] }>("/purchases", { token: token() }),
-  create: (data: { supplierId: string; reference?: string; dueDate: string; items: Array<{ productId: string; quantity: number; unitCost: number }> }) =>
+  create: (data: { supplierId: string; reference?: string; dueDate: string; installmentCount?: number; items: Array<{ productId: string; quantity: number; unitCost: number }> }) =>
     apiRequest<{ purchase: Purchase }>("/purchases", { method: "POST", token: token(), body: data }),
+  update: (id: string, data: { supplierId: string; reference?: string; dueDate: string; installmentCount: number; items: Array<{ productId: string; quantity: number; unitCost: number }> }) =>
+    apiRequest<{ purchase: Purchase; message: string }>(`/purchases/${id}`, { method: "PUT", token: token(), body: data }),
   receive: (id: string) =>
     apiRequest<{ message: string }>(`/purchases/${id}/receive`, { method: "POST", token: token() })
 };

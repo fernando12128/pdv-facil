@@ -44,6 +44,23 @@ export type MarketSettings = {
   owner: { name: string; email: string };
 };
 
+export type StockRotationItem = {
+  id: string;
+  name: string;
+  sku: string | null;
+  stock: number;
+  cost: number;
+  lastSaleAt: string | null;
+  daysWithoutSales: number;
+  neverSold: boolean;
+  capitalCents: number;
+  status: "NEW" | "NORMAL" | "14_DAYS" | "30_DAYS" | "60_DAYS";
+};
+export type StockRotationResponse = {
+  items: StockRotationItem[];
+  summary: { slowCount: number; slowCapitalCents: number; neverSoldCount: number; days30Count: number; days60Count: number };
+};
+
 export const managementService = {
   categories: {
     list: () =>
@@ -136,6 +153,7 @@ export const managementService = {
       }),
   },
   stock: {
+    rotation: () => apiRequest<StockRotationResponse>("/management/stock/rotation", { token: token() }),
     adjust: (productId: string, adjustment: number) =>
       apiRequest<{ product: import("./productsService").Product }>(
         `/management/stock/${productId}`,
