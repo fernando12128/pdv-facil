@@ -21,6 +21,7 @@ export default function FinancePage({ onLogout, onNavigate }: Props) {
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
   const [report, setReport] = useState<FinanceReport | null>(null);
   const [tab, setTab] = useState<"entries" | "dre" | "cash" | "bank" | "recurring">("entries");
+  const [entryFilter, setEntryFilter] = useState<"all" | "overdue" | "open" | "settled">("all");
   const [modal, setModal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -32,7 +33,20 @@ export default function FinancePage({ onLogout, onNavigate }: Props) {
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível carregar o financeiro."); }
   }
   useEffect(() => { void load(); }, [month]);
-  const filtered = entries.filter(e => e.dueDate.slice(0, 7) === month);
+  const isOverdue = (entry: FinancialEntry) => entry.status === "OPEN" && entry.dueDate.slice(0,10) < new Date().toLocaleDateString("en-CA");
+  const filtered = entries.filter(e => e.dueDate.slice(0, 7) === month &&
+    (entryFilter === "all" || (entryFilter === "overdue" && isOverdue(e)) ||
+    (entryFilter === "open" && e.status === "OPEN") || (entryFilter === "settled" && e.status === "SETTLED")));
+  const overdueCount = entries.filter(isOverdue).length;
+  function exportCsv() {
+    const heading = ["Descrição","Tipo","Categoria","Vencimento","Status","Valor"];
+    const csvRows = [heading,...filtered.map(e => [e.description,e.type,e.category,e.dueDate.slice(0,10),e.status,e.amount.toFixed(2).replace(".",",")])];
+    const csv = "\\uFEFF" + csvRows.map(row => row.map(v => `"${String(v).replace(/"/g, `""`)}"`).join(";")).join("\\r\\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `pdv-facil-financeiro-${month}.csv`;
+    anchor.click(); URL.revokeObjectURL(url);
+  }
   async function create(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError("");
     try {
@@ -62,8 +76,9 @@ export default function FinancePage({ onLogout, onNavigate }: Props) {
         <section className="card finance-stat"><div><span>Saldo do fluxo manual</span><Wallet /></div><strong>{brl(report?.cashFlow.net || 0)}</strong></section>
         <section className="card finance-stat"><div><span>A pagar em aberto no mês</span><ArrowUpCircle /></div><strong>{brl(report?.cashFlow.pendingOutflows || 0)}</strong></section>
       </div>
+      {overdueCount > 0 && <p className="feedback-error" role="status">Atenção: {overdueCount} conta(s) vencida(s) e ainda não liquidadas.</p>}
       <div className="finance-tabs"><button className={tab==="entries"?"active":""} onClick={()=>setTab("entries")}>Contas a pagar / receber</button><button className={tab==="dre"?"active":""} onClick={()=>setTab("dre")}>DRE gerencial</button><button className={tab==="cash"?"active":""} onClick={()=>setTab("cash")}>Fluxo de caixa</button><button className={tab==="bank"?"active":""} onClick={()=>setTab("bank")}>Conciliação</button><button className={tab==="recurring"?"active":""} onClick={()=>setTab("recurring")}>Recorrências</button></div>
-      {tab==="entries" && <section className="card"><div className="card-header"><h2>Lançamentos do mês</h2></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Vencimento</th><th>Status</th><th className="right">Valor</th><th className="right">Ações</th></tr></thead><tbody>{filtered.map(e=><tr key={e.id}><td><strong>{e.description}</strong>{e.purchaseId && <small style={{ display: "block", color: "var(--muted-foreground)", marginTop: 3 }}>Gerado pelo romaneio</small>}</td><td>{e.type==="PAYABLE"?"A pagar":"A receber"}</td><td>{e.category}</td><td>{localDate(e.dueDate)}</td><td><span className={`badge ${e.status==="SETTLED"?"success":new Date(e.dueDate)<new Date()?"danger":"warning"}`}>{e.status==="SETTLED"?"Liquidado":"Em aberto"}</span></td><td className="right">{brl(e.amount)}</td><td className="right">{e.status==="OPEN" && <div className="finance-actions"><button disabled={busy} className="outline-button" onClick={()=>void act(e.id,"settle")}>Liquidar</button>{!e.purchaseId && <button disabled={busy} className="outline-button" onClick={()=>void act(e.id,"remove")}>Excluir</button>}</div>}</td></tr>)}</tbody></table>{!filtered.length && <div className="empty-state">Nenhum lançamento com vencimento neste mês.</div>}</div></section>}
+      {tab==="entries" && <section className="card"><div className="card-header"><h2>Lançamentos do mês</h2><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><select aria-label="Filtrar lançamentos" value={entryFilter} onChange={e => setEntryFilter(e.target.value as typeof entryFilter)}><option value="all">Todos</option><option value="open">Em aberto</option><option value="overdue">Vencidos</option><option value="settled">Liquidados</option></select><button className="outline-button" onClick={exportCsv}>Exportar CSV</button></div></div><div className="table-wrap"><table className="data-table"><thead><tr><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Vencimento</th><th>Status</th><th className="right">Valor</th><th className="right">Ações</th></tr></thead><tbody>{filtered.map(e=><tr key={e.id}><td><strong>{e.description}</strong>{e.purchaseId && <small style={{ display: "block", color: "var(--muted-foreground)", marginTop: 3 }}>Gerado pelo romaneio</small>}</td><td>{e.type==="PAYABLE"?"A pagar":"A receber"}</td><td>{e.category}</td><td>{localDate(e.dueDate)}</td><td><span className={`badge ${e.status==="SETTLED"?"success":new Date(e.dueDate)<new Date()?"danger":"warning"}`}>{e.status==="SETTLED"?"Liquidado":"Em aberto"}</span></td><td className="right">{brl(e.amount)}</td><td className="right">{e.status==="OPEN" && <div className="finance-actions"><button disabled={busy} className="outline-button" onClick={()=>void act(e.id,"settle")}>Liquidar</button>{!e.purchaseId && <button disabled={busy} className="outline-button" onClick={()=>void act(e.id,"remove")}>Excluir</button>}</div>}</td></tr>)}</tbody></table>{!filtered.length && <div className="empty-state">Nenhum lançamento com vencimento neste mês.</div>}</div></section>}
       {tab==="dre" && <section className="card"><div className="card-header"><h2>Demonstração de resultado gerencial</h2></div><div className="card-body finance-report">{[["Receita de vendas (PDV)",report?.dre.salesRevenue],["Outras receitas liquidadas", report?.dre.otherRevenue],["CMV das vendas registradas", -(report?.dre.cmv||0)],["Despesas operacionais liquidadas", -(report?.dre.expenses||0)],["Resultado gerencial preliminar",report?.dre.result]].map(([label,value])=><div key={String(label)}><span>{label}</span><strong>{brl(Number(value || 0))}</strong></div>)}<p>{report?.dre.basis}</p><h3>Despesas por categoria</h3>{report?.dre.categories.map(c=><div key={c.category}><span>{c.category}</span><strong>{brl(c.total)}</strong></div>)}</div></section>}
       {tab==="cash" && <section className="card"><div className="card-header"><h2>Fluxo de caixa manual</h2></div><div className="card-body finance-report">{[["Entradas confirmadas",report?.cashFlow.confirmedInflows],["Saídas confirmadas",report?.cashFlow.confirmedOutflows],["Saldo do período",report?.cashFlow.net],["A receber em aberto",report?.cashFlow.pendingInflows],["A pagar em aberto",report?.cashFlow.pendingOutflows]].map(([label,value])=><div key={String(label)}><span>{label}</span><strong>{brl(Number(value||0))}</strong></div>)}<p>{report?.cashFlow.notice}</p></div></section>}
       {tab === "bank" && <BankingPanel />}
