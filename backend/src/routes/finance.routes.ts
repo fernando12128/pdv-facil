@@ -40,7 +40,9 @@ financeRoutes.patch("/entries/:id/settle", async (req: AuthenticatedRequest, res
   res.json({ entry: format(entry) });
 });
 financeRoutes.delete("/entries/:id", async (req: AuthenticatedRequest, res) => {
-  const result = await prisma.financialEntry.deleteMany({ where: { id: req.params.id, marketId: req.user!.marketId, status: "OPEN" } });
+  const linked = await prisma.financialEntry.findFirst({ where: { id: req.params.id, marketId: req.user!.marketId }, select: { purchaseId: true } });
+  if (linked?.purchaseId) return res.status(409).json({ message: "Este lançamento pertence a um romaneio e não pode ser excluído manualmente." });
+  const result = await prisma.financialEntry.deleteMany({ where: { id: req.params.id, marketId: req.user!.marketId, status: "OPEN", purchaseId: null } });
   if (!result.count) return res.status(404).json({ message: "Lançamento inexistente ou já liquidado." });
   res.json({ message: "Lançamento removido." });
 });
