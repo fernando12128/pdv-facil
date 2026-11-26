@@ -62,10 +62,11 @@ function parseOfx(text: string): ParsedMovement[] {
     return { date: dateIso(date), description, amount: parseMoney(tag(block, "TRNAMT")), externalId: tag(block, "FITID") || undefined };
   });
 }
-export function BankingPanel() {
+export function BankingPanel({ month }: { month: string }) {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [accountId, setAccountId] = useState("");
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+  const [forecast, setForecast] = useState<Array<{ saleId: string; paymentMethod: string; provider: string | null; gross: number; fee: number | null; net: number | null; expectedAt: string | null }>>([]);
   const [selected, setSelected] = useState("");
   const [suggestions, setSuggestions] = useState<Array<{ id: string; description: string; amount: number; dueDate: string }>>([]);
   const [selectedEntry, setSelectedEntry] = useState("");
@@ -74,11 +75,11 @@ export function BankingPanel() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   async function load() {
-    const [a,t] = await Promise.all([bankingService.accounts(), bankingService.transactions()]);
-    setAccounts(a.accounts); setTransactions(t.transactions);
+    const [a,t,c] = await Promise.all([bankingService.accounts(), bankingService.transactions(), bankingService.cardForecast(month)]);
+    setAccounts(a.accounts); setTransactions(t.transactions); setForecast(c.forecast);
     if (!accountId && a.accounts.length) setAccountId(a.accounts[0].id);
   }
-  useEffect(() => { void load().catch(e => setError(e instanceof Error ? e.message : "Falha ao carregar extratos.")); }, []);
+  useEffect(() => { void load().catch(e => setError(e instanceof Error ? e.message : "Falha ao carregar extratos.")); }, [month]);
   async function importFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !accountId) return;
@@ -123,7 +124,21 @@ export function BankingPanel() {
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao classificar."); }
     finally { setBusy(false); }
   }
-  return <section className="card">
+  return <>
+    <section className="card">
+      <div className="card-header"><h2>Previsão de recebíveis de cartão • {month}</h2></div>
+      <div className="card-body">
+        <p>Estimativa gerencial calculada pelas taxas cadastradas em Configurações. Não representa crédito conciliado ou previsão contratual garantida.</p>
+        <div className="table-wrap"><table className="data-table"><thead><tr><th>Modalidade</th><th>Adquirente</th><th>Bruto</th><th>Taxa estimada</th><th>Líquido</th><th>Recebimento previsto</th></tr></thead><tbody>
+          {forecast.map(row => <tr key={row.saleId}><td>{row.paymentMethod === "CREDIT" ? "Crédito" : "Débito"}</td>
+            <td>{row.provider || "Configurar taxa"}</td><td>{brl(row.gross)}</td>
+            <td>{row.fee === null ? "Não configurada" : brl(row.fee)}</td>
+            <td>{row.net === null ? "Não calculado" : brl(row.net)}</td>
+            <td>{row.expectedAt ? formatDate(row.expectedAt) : "-"}</td></tr>)}
+        </tbody></table>{!forecast.length && <p className="empty-state">Nenhuma venda no cartão no mês.</p>}</div>
+      </div>
+    </section>
+    <section className="card">
     <div className="card-header"><h2>Conciliação por extrato</h2></div>
     <div className="card-body" style={{ display: "grid", gap: 14 }}>
       <p>Importe CSV ou OFX da conta cadastrada em <strong>Configurações</strong>. A conciliação é assistida: nenhuma conta será liquidada sem sua confirmação.</p>
@@ -153,7 +168,7 @@ export function BankingPanel() {
         <div><button className="primary-button" disabled={busy || !selectedEntry} onClick={() => void reconcile()}>Confirmar conciliação</button>{" "}<button className="outline-button" onClick={() => setSelected("")}>Cancelar</button></div>
       </div>}
     </div>
-  </section>;
+  </section></>;
 }
 export function RecurrencesPanel() {
   const [rules, setRules] = useState<RecurringRule[]>([]);
