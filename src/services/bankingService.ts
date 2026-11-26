@@ -16,6 +16,7 @@ export const bankingService = {
     apiRequest<{ added: number; duplicates: number }>(base + "/transactions/import", { method: "POST", token: token(), body: data }),
   suggestions: (id: string) => apiRequest<{ suggestions: Array<{ id: string; description: string; amount: number; dueDate: string }> }>(base + `/transactions/${id}/suggestions`, { token: token() }),
   reconcile: (id: string, entryId: string) => apiRequest<{ message: string }>(base + `/transactions/${id}/reconcile`, { method: "POST", token: token(), body: { entryId } }),
+  classify: (id: string, category: string) => apiRequest<{ entry: { id: string } }>(base + `/transactions/${id}/classify`, { method: "POST", token: token(), body: { category } }),
   recurrences: () => apiRequest<{ rules: RecurringRule[] }>(base + "/recurrences", { token: token() }),
   createRecurrence: (data: { type: string; description: string; category: string; amount: number; nextDueDate: string }) =>
     apiRequest<{ rule: RecurringRule }>(base + "/recurrences", { method: "POST", token: token(), body: data }),
