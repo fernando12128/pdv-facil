@@ -12,6 +12,7 @@ import { managementRoutes } from "./routes/management.routes";
 import { cashSessionsRoutes } from "./routes/cashSessions.routes";
 import { onlineOrdersRoutes } from "./routes/onlineOrders.routes";
 import { reportsRoutes } from "./routes/reports.routes";
+import { purchasesRoutes } from "./routes/purchases.routes";
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use("/management", managementRoutes);
 app.use("/cash-sessions", cashSessionsRoutes);
 app.use("/online-orders", onlineOrdersRoutes);
 app.use("/reports", reportsRoutes);
+app.use("/purchases", purchasesRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/public", publicRoutes);
 
