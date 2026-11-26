@@ -125,14 +125,14 @@ try {
   const fiscalOtherTenant = await request("/fiscal/settings", { token: tokenB });
   assert(fiscalOtherTenant.status === 200 && !fiscalOtherTenant.data.settings.cnpj,
     "Configurações fiscais isoladas entre empresas");
-  const classified = await request(`/products/${product.data.product.id}`, { token: tokenA, method: "PUT", body: {
+  const fiscalProductResult = await request(`/products/${product.data.product.id}`, { token: tokenA, method: "PUT", body: {
     name: "Produto Teste", sku: "", barcode: "", category: "", brand: "",
     isActive: true, salePrice: 20, cost: 10, useSameOnlinePrice: true, onlinePrice: 20,
     stock: 5, minStock: 0, allowBackorder: false, isVisibleOnline: false,
     description: "", imageUrl: "", isFeatured: false, allowPickup: true, allowDelivery: true,
     ncm: "22021000", cest: "", cfop: "5102", fiscalUnit: "UN", originCode: "0", taxSituation: "102"
   } });
-  assert(classified.status === 200 && classified.data.product.ncm === "22021000", "Classificação fiscal do produto atualizada");
+  assert(fiscalProductResult.status === 200 && fiscalProductResult.data.product.ncm === "22021000", "Classificação fiscal do produto atualizada");
   const supplier = await request("/purchases/suppliers", { token: tokenA, method: "POST", body: { name: "Distribuidora Teste" } });
   assert(supplier.status === 201, "Fornecedor criado");
   const dueDate = "2026-12-10";
