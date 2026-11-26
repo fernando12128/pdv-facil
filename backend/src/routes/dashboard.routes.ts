@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
+import { getStockRotation } from "../lib/stockRotation";
 import {
   authMiddleware,
   AuthenticatedRequest,
@@ -142,6 +143,8 @@ dashboardRoutes.get("/", async (req: AuthenticatedRequest, res) => {
       }),
     ]);
 
+    const rotation = await getStockRotation(req.user.marketId);
+
     const lowStockCount = lowStockProducts.filter(
       (product) => product.stock <= product.minStock
     ).length;
@@ -155,6 +158,8 @@ dashboardRoutes.get("/", async (req: AuthenticatedRequest, res) => {
       productsCount,
       activeProductsCount,
       lowStockCount,
+      slowStockCount: rotation.summary.slowCount,
+      slowStockCapitalCents: rotation.summary.slowCapitalCents,
       onlineOrdersToday,
       cashOpenedAt: openCashSession?.openedAt || null,
       chart,
