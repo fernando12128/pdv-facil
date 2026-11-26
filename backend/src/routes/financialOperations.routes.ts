@@ -70,6 +70,7 @@ financialOperationsRoutes.post("/transactions/import", async (req: Authenticated
   const account = await prisma.bankAccount.findFirst({ where: { id: bankAccountId, marketId, active: true } });
   if (!account) return res.status(404).json({ message: "Conta não encontrada." });
   const rows: Array<{ externalId: string; description: string; amountCents: number; date: Date }> = [];
+  const repeatedRows = new Map<string, number>();
   for (const [index, row] of transactions.entries()) {
     const date = fromDate(row?.date), value = Number(row?.amount);
     const absoluteCents = cents(Math.abs(value));
@@ -78,8 +79,13 @@ financialOperationsRoutes.post("/transactions/import", async (req: Authenticated
         (row.externalId != null && (typeof row.externalId !== "string" || row.externalId.length > 160)))
       return res.status(400).json({ message: `Linha ${index + 1}: data, descrição ou valor inválido.` });
     const amountCents = value < 0 ? -absoluteCents : absoluteCents;
+    // Arquivos sem FITID podem conter dois pagamentos idênticos no mesmo dia.
+    // A ocorrência preserva ambos e mantém deduplicação em reimportação do mesmo arquivo.
+    const fingerprint = JSON.stringify({ bankAccountId, date: row.date, amountCents, description });
+    const occurrence = (repeatedRows.get(fingerprint) || 0) + 1;
+    repeatedRows.set(fingerprint, occurrence);
     const externalId = String(row.externalId || "").trim() ||
-      createHash("sha256").update(JSON.stringify({ bankAccountId, date: row.date, amountCents, description })).digest("hex");
+      createHash("sha256").update(JSON.stringify({ fingerprint, occurrence })).digest("hex");
     rows.push({ date, amountCents, description, externalId });
   }
   try {
