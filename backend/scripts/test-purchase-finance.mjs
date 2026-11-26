@@ -107,6 +107,8 @@ try {
   process.exitCode = 1;
 } finally {
   server.kill();
-  await new Promise(resolve => server.once("exit", resolve));
+  if (server.exitCode === null && server.signalCode === null) {
+    await new Promise(resolve => server.once("exit", resolve));
+  }
   rmSync(temp, { recursive: true, force: true });
 }
