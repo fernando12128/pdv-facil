@@ -391,6 +391,8 @@ model FinancialEntry {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   market      Market   @relation(fields: [marketId], references: [id])
+  purchaseId  String?  @unique
+  purchase    Purchase? @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
   @@index([marketId, dueDate])
   @@index([marketId, status])
 }
@@ -420,6 +422,7 @@ model Purchase {
   createdAt   DateTime @default(now())
   market      Market @relation(fields: [marketId], references: [id])
   supplier    Supplier @relation(fields: [supplierId], references: [id])
+  financialEntry FinancialEntry?
   items       PurchaseItem[]
   @@index([marketId, createdAt])
 }

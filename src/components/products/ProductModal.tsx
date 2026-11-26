@@ -13,6 +13,11 @@ interface ProductModalProps {
   product?: ProductFormData | null;
 }
 
+// Máscara monetária no padrão brasileiro: digitar 1234 produz R$ 12,34.
+const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const currencyDigits = (value: string) => value.replace(/\D/g, "").slice(0, 12);
+const parseCurrencyInput = (value: string) => Number(currencyDigits(value)) / 100;
+
 const initialForm: ProductFormData = {
   name: "",
   sku: "",
@@ -194,20 +199,22 @@ export default function ProductModal({
                 <div className="field">
                   <label>Preço balcão (PDV)</label>
                   <input
-                    type="number"
-                    value={form.salePrice}
-                    onChange={(e) =>
-                      updateField("salePrice", Number(e.target.value))
-                    }
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Preço balcão em reais"
+                    value={brl(form.salePrice)}
+                    onChange={(e) => updateField("salePrice", parseCurrencyInput(e.target.value))}
                   />
                 </div>
 
                 <div className="field">
                   <label>Custo</label>
                   <input
-                    type="number"
-                    value={form.cost}
-                    onChange={(e) => updateField("cost", Number(e.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Custo em reais"
+                    value={brl(form.cost)}
+                    onChange={(e) => updateField("cost", parseCurrencyInput(e.target.value))}
                   />
                 </div>
               </div>
@@ -226,12 +233,12 @@ export default function ProductModal({
               <div className="field full">
                 <label>Preço online</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  aria-label="Preço online em reais"
                   disabled={form.useSameOnlinePrice}
-                  value={form.useSameOnlinePrice ? form.salePrice : form.onlinePrice}
-                  onChange={(e) =>
-                    updateField("onlinePrice", Number(e.target.value))
-                  }
+                  value={brl(form.useSameOnlinePrice ? form.salePrice : form.onlinePrice)}
+                  onChange={(e) => updateField("onlinePrice", parseCurrencyInput(e.target.value))}
                 />
               </div>
 
