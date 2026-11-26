@@ -98,8 +98,10 @@ try {
     .filter((entry) => existsSync(join(backendDir, 'prisma/migrations', entry, 'migration.sql')))
     .sort();
   const p0Migration = migrationDirs.find((entry) => entry.startsWith('20261016090000_'));
-  const accountMigration = migrationDirs.find((entry) => entry.startsWith('20261017010000_'));
-  for (const dir of migrationDirs.filter((entry) => entry !== p0Migration && entry !== accountMigration)) {
+  if (!p0Migration) throw new Error('Migração P0 não encontrada.');
+  // Prepara o banco legado ANTES das migrações de segurança e confirmação de conta.
+  // Migrações posteriores dependem dessas colunas e precisam rodar em ordem.
+  for (const dir of migrationDirs.filter((entry) => entry < p0Migration)) {
     migrationDb.exec(readFileSync(join(backendDir, 'prisma/migrations', dir, 'migration.sql'), 'utf8'));
   }
   migrationDb.exec(`
@@ -108,8 +110,9 @@ try {
     UPDATE "User" SET "marketId"='legacy-market' WHERE "id"='legacy-user';
     INSERT INTO "CashSession" ("id","marketId","userId","openingAmount") VALUES ('legacy-session-1','legacy-market','legacy-user',0),('legacy-session-2','legacy-market','legacy-user',0);
   `);
-  migrationDb.exec(readFileSync(join(backendDir, 'prisma/migrations', p0Migration, 'migration.sql'), 'utf8'));
-  migrationDb.exec(readFileSync(join(backendDir, 'prisma/migrations', accountMigration, 'migration.sql'), 'utf8'));
+  for (const dir of migrationDirs.filter((entry) => entry >= p0Migration)) {
+    migrationDb.exec(readFileSync(join(backendDir, 'prisma/migrations', dir, 'migration.sql'), 'utf8'));
+  }
   const migratedSessions = migrationDb.prepare('SELECT "registerKey" FROM "CashSession" WHERE "marketId"=? ORDER BY "id"').all('legacy-market');
   check('Migração preserva múltiplos caixas abertos já existentes', migratedSessions.length === 2 && new Set(migratedSessions.map((row) => row.registerKey)).size === 2);
   migrationDb.close();
