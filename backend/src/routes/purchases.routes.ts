@@ -71,7 +71,10 @@ purchasesRoutes.get("/", async (req: AuthenticatedRequest, res) => {
 purchasesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
   if (!canManage(req)) return res.status(403).json({ message: "Sem permissão." });
   const marketId = req.user!.marketId;
-  const { supplierId, reference, items, dueDate } = req.body || {};
+  const { supplierId, reference, items, dueDate, installmentCount = 1 } = req.body || {};
+  if (!Number.isSafeInteger(installmentCount) || installmentCount < 1 || installmentCount > 36) {
+    return res.status(400).json({ message: "Quantidade de parcelas deve estar entre 1 e 36." });
+  }
   const payableDate = dueDate === undefined || dueDate === null || dueDate === ""
     ? new Date().toISOString().slice(0, 10) : String(dueDate);
   const payableAsDate = new Date(`${payableDate}T12:00:00.000Z`);
@@ -118,7 +121,7 @@ purchasesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
     }
     const amountCents = Math.round(total * 100);
     // Prisma Int utiliza inteiro de 32 bits para os valores financeiros.
-    if (amountCents <= 0 || amountCents > 2147483647) {
+    if (amountCents < installmentCount || amountCents > 2147483647) {
       return res.status(400).json({ message: "O total do romaneio deve ser positivo e compatível com o Financeiro." });
     }
     // Compra e lançamento financeiro são criados juntos: ou ambos salvam, ou nenhum salva.
@@ -132,19 +135,25 @@ purchasesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
         },
         include: { items: true, supplier: true }
       });
-      await tx.financialEntry.create({
-        data: {
-          marketId,
-          purchaseId: created.id,
-          type: "PAYABLE",
-          category: "Compras de mercadorias",
-          description: `Compra - ${supplier.name}${created.reference ? ` (${created.reference})` : ""}`,
-          amountCents,
-          dueDate: payableAsDate,
-          status: "OPEN",
-          notes: "Gerado automaticamente pelo romaneio."
-        }
-      });
+      // Cada parcela possui valor inteiro em centavos; o resto fica nas primeiras parcelas.
+      const baseCents = Math.floor(amountCents / installmentCount);
+      const remainder = amountCents % installmentCount;
+      for (let part = 0; part < installmentCount; part++) {
+        const monthIndex = payableAsDate.getUTCMonth() + part;
+        const year = payableAsDate.getUTCFullYear();
+        const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+        const date = new Date(Date.UTC(year, monthIndex, Math.min(payableAsDate.getUTCDate(), lastDay), 12));
+        await tx.financialEntry.create({
+          data: {
+            marketId, purchaseId: created.id,
+            type: "PAYABLE", category: "Compras de mercadorias",
+            description: `Compra - ${supplier.name}${created.reference ? ` (${created.reference})` : ""}${installmentCount > 1 ? ` - ${part + 1}/${installmentCount}` : ""}`,
+            amountCents: baseCents + (part < remainder ? 1 : 0), dueDate: date,
+            installmentGroup: created.id, installmentNumber: part + 1, installmentCount,
+            status: "OPEN", notes: "Gerado automaticamente pelo romaneio."
+          }
+        });
+      }
       return created;
     });
     return res.status(201).json({ purchase });
