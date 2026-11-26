@@ -163,6 +163,104 @@ purchasesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// Edita somente romaneios pendentes, sem movimentação financeira já liquidada/conciliada.
+// Compra, itens e parcelas são atualizados na mesma transação.
+purchasesRoutes.put("/:id", async (req: AuthenticatedRequest, res) => {
+  if (!canManage(req)) return res.status(403).json({ message: "Sem permissão." });
+  const marketId = req.user!.marketId;
+  const { supplierId, reference, items, dueDate, installmentCount } = req.body || {};
+  if (typeof supplierId !== "string" || !Array.isArray(items) || items.length < 1 || items.length > 200 ||
+      !Number.isSafeInteger(installmentCount) || installmentCount < 1 || installmentCount > 36 ||
+      (reference != null && (typeof reference !== "string" || reference.length > 100))) {
+    return res.status(400).json({ message: "Fornecedor, itens, referência ou parcelas inválidos." });
+  }
+  const payableDate = typeof dueDate === "string" ? dueDate : "";
+  const payableAsDate = new Date(payableDate + "T12:00:00.000Z");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(payableDate) || Number.isNaN(payableAsDate.getTime()) ||
+      payableAsDate.toISOString().slice(0, 10) !== payableDate) {
+    return res.status(400).json({ message: "Vencimento inválido." });
+  }
+  const seen = new Set<string>();
+  const normalized: Array<{ productId: string; quantity: number; unitCost: number; total: number }> = [];
+  for (const item of items) {
+    if (!item || typeof item.productId !== "string" || !item.productId || seen.has(item.productId) ||
+        !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 100000 || !money(item.unitCost) ||
+        !Number.isSafeInteger(Math.round(item.quantity * item.unitCost * 100))) {
+      return res.status(400).json({ message: "Itens inválidos ou duplicados." });
+    }
+    seen.add(item.productId);
+    normalized.push({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitCost: amount(item.unitCost),
+      total: amount(item.quantity * item.unitCost)
+    });
+  }
+  const total = amount(normalized.reduce((sum, item) => sum + item.total, 0));
+  const amountCents = Math.round(total * 100);
+  if (!Number.isSafeInteger(amountCents) || amountCents < installmentCount || amountCents > 2147483647) {
+    return res.status(400).json({ message: "Valor total incompatível com a quantidade de parcelas." });
+  }
+  try {
+    const result = await prisma.$transaction(async tx => {
+      const current = await tx.purchase.findFirst({
+        where: { id: req.params.id, marketId },
+        include: { financialEntries: true }
+      });
+      if (!current) return { status: 404, message: "Romaneio não encontrado." };
+      if (current.status !== "DRAFT") return { status: 409, message: "Romaneio recebido não pode ser alterado. Registre uma devolução ou ajuste de estoque em fluxo específico." };
+      if (!current.financialEntries.length || current.financialEntries.some(entry =>
+        entry.status !== "OPEN" || entry.settledAt || entry.bankTransactionId)) {
+        return { status: 409, message: "O romaneio possui parcelas pagas ou conciliadas e não pode ser editado." };
+      }
+      const supplier = await tx.supplier.findFirst({ where: { id: supplierId, marketId } });
+      const count = await tx.product.count({ where: { marketId, id: { in: normalized.map(item => item.productId) } } });
+      if (!supplier || count !== normalized.length) return { status: 400, message: "Fornecedor ou produto não pertence a esta empresa." };
+      const claimed = await tx.purchase.updateMany({
+        where: { id: current.id, marketId, status: "DRAFT" },
+        data: { supplierId, reference: reference?.trim() || null, total }
+      });
+      if (claimed.count !== 1) return { status: 409, message: "O romaneio foi alterado por outra operação." };
+      await tx.purchaseItem.deleteMany({ where: { purchaseId: current.id } });
+      await tx.purchaseItem.createMany({ data: normalized.map(item => ({ ...item, purchaseId: current.id })) });
+      await tx.financialEntry.deleteMany({ where: { marketId, purchaseId: current.id, status: "OPEN", bankTransactionId: null } });
+      const baseCents = Math.floor(amountCents / installmentCount);
+      const remainder = amountCents % installmentCount;
+      for (let part = 0; part < installmentCount; part++) {
+        const monthIndex = payableAsDate.getUTCMonth() + part;
+        const year = payableAsDate.getUTCFullYear();
+        const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+        const date = new Date(Date.UTC(year, monthIndex, Math.min(payableAsDate.getUTCDate(), lastDay), 12));
+        await tx.financialEntry.create({
+          data: {
+            marketId, purchaseId: current.id, type: "PAYABLE",
+            category: "Compras de mercadorias",
+            description: `Compra - ${supplier.name}${reference?.trim() ? ` (${reference.trim()})` : ""}${installmentCount > 1 ? ` - ${part + 1}/${installmentCount}` : ""}`,
+            amountCents: baseCents + (part < remainder ? 1 : 0), dueDate: date,
+            installmentGroup: current.id, installmentNumber: part + 1, installmentCount,
+            status: "OPEN", notes: "Atualizado automaticamente pela edição do romaneio."
+          }
+        });
+      }
+      await tx.financeAuditLog.create({ data: {
+        marketId, userId: req.user!.userId, action: "EDIT_PURCHASE",
+        targetType: "PURCHASE", targetId: current.id,
+        details: JSON.stringify({ oldTotal: current.total, newTotal: total, installments: installmentCount })
+      } });
+      const purchase = await tx.purchase.findFirst({
+        where: { id: current.id, marketId },
+        include: { supplier: true, items: true, financialEntries: true }
+      });
+      return { status: 200, purchase };
+    });
+    if (result.status !== 200) return res.status(result.status).json({ message: result.message });
+    return res.json({ purchase: result.purchase, message: "Romaneio e parcelas financeiras atualizados." });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Erro ao atualizar o romaneio." });
+  }
+});
+
 purchasesRoutes.post("/:id/receive", async (req: AuthenticatedRequest, res) => {
   if (!canManage(req)) return res.status(403).json({ message: "Sem permissão." });
   const marketId = req.user!.marketId;
