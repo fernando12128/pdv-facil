@@ -72,6 +72,10 @@ model Market {
   onlineOrders           OnlineOrder[]
   cashClosingCorrections CashClosingCorrection[]
   financialEntries FinancialEntry[]
+  bankAccounts BankAccount[]
+  bankTransactions BankTransaction[]
+  recurringRules RecurringRule[]
+  financeAuditLogs FinanceAuditLog[]
 }
 
 enum UserRole {
@@ -156,6 +160,7 @@ model SaleItem {
   quantity    Int
   unitPrice   Float
   total       Float
+  costAtSale Float @default(0)
 
   sale    ProductSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product Product     @relation(fields: [productId], references: [id])
@@ -391,8 +396,17 @@ model FinancialEntry {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   market      Market   @relation(fields: [marketId], references: [id])
-  purchaseId  String?  @unique
+  purchaseId  String?
   purchase    Purchase? @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  bankTransactionId String? @unique
+  bankTransaction BankTransaction? @relation(fields: [bankTransactionId], references: [id], onDelete: SetNull)
+  recurrenceId String?
+  recurrence RecurringRule? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  installmentGroup String?
+  installmentNumber Int?
+  installmentCount Int?
+  @@index([marketId, purchaseId])
+  @@index([marketId, recurrenceId])
   @@index([marketId, dueDate])
   @@index([marketId, status])
 }
@@ -422,7 +436,7 @@ model Purchase {
   createdAt   DateTime @default(now())
   market      Market @relation(fields: [marketId], references: [id])
   supplier    Supplier @relation(fields: [supplierId], references: [id])
-  financialEntry FinancialEntry?
+  financialEntries FinancialEntry[]
   items       PurchaseItem[]
   @@index([marketId, createdAt])
 }
@@ -434,7 +448,68 @@ model PurchaseItem {
   quantity   Int
   unitCost   Float
   total      Float
+  costAtSale Float @default(0)
   purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product    Product @relation(fields: [productId], references: [id])
   @@index([purchaseId])
+}
+
+model BankAccount {
+  id String @id @default(uuid())
+  marketId String
+  name String
+  bankName String
+  accountType String @default("CHECKING")
+  lastFour String?
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  market Market @relation(fields: [marketId], references: [id])
+  transactions BankTransaction[]
+  @@index([marketId])
+}
+
+model BankTransaction {
+  id String @id @default(uuid())
+  marketId String
+  bankAccountId String
+  externalId String
+  date DateTime
+  description String
+  amountCents Int
+  status String @default("UNMATCHED")
+  createdAt DateTime @default(now())
+  market Market @relation(fields: [marketId], references: [id])
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+  financialEntry FinancialEntry?
+  @@unique([bankAccountId, externalId])
+  @@index([marketId, date])
+}
+
+model RecurringRule {
+  id String @id @default(uuid())
+  marketId String
+  type String
+  description String
+  category String
+  amountCents Int
+  dayOfMonth Int
+  active Boolean @default(true)
+  nextDueDate DateTime
+  createdAt DateTime @default(now())
+  market Market @relation(fields: [marketId], references: [id])
+  entries FinancialEntry[]
+  @@index([marketId, nextDueDate])
+}
+
+model FinanceAuditLog {
+  id String @id @default(uuid())
+  marketId String
+  userId String
+  action String
+  targetType String
+  targetId String
+  details String?
+  createdAt DateTime @default(now())
+  market Market @relation(fields: [marketId], references: [id])
+  @@index([marketId, createdAt])
 }
