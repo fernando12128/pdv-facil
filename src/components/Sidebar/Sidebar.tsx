@@ -12,6 +12,7 @@ import {
   ReceiptText,
   Settings,
   ShoppingCart,
+  ClipboardList,
   Store,
   Tags,
   Users,
@@ -25,6 +26,7 @@ export type AppPage =
   | "dashboard"
   | "products"
   | "categories"
+  | "purchases"
   | "inventory"
   | "customers"
   | "employees"
@@ -64,6 +66,7 @@ const registrationItems: SidebarItem[] = [
   { id: "products", label: "Produtos", icon: <Package /> },
   { id: "categories", label: "Categorias", icon: <Tags /> },
   { id: "inventory", label: "Estoque", icon: <Boxes /> },
+  { id: "purchases", label: "Compras", icon: <ClipboardList /> },
   { id: "customers", label: "Clientes", icon: <Users /> },
   { id: "employees", label: "Funcionários", icon: <CircleUserRound /> },
 ];
