@@ -59,6 +59,8 @@ model Market {
   owner   User   @relation("MarketOwner", fields: [ownerId], references: [id])
 
   users                  User[]
+  suppliers               Supplier[]
+  purchases               Purchase[]
   products               Product[]
   sales                  ProductSale[]
   cashMovements          CashMovement[]
@@ -110,6 +112,7 @@ model Product {
   updatedAt DateTime @updatedAt
 
   market    Market     @relation(fields: [marketId], references: [id])
+  purchaseItems PurchaseItem[]
   saleItems SaleItem[]
   onlineOrderItems OnlineOrderItem[]
 
@@ -371,4 +374,45 @@ enum OnlineOrderStatus {
   OUT_FOR_DELIVERY
   DELIVERED
   CANCELLED
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  marketId  String
+  name      String
+  document  String?
+  phone     String?
+  email     String?
+  createdAt DateTime @default(now())
+  market    Market   @relation(fields: [marketId], references: [id])
+  purchases Purchase[]
+  @@index([marketId])
+}
+
+model Purchase {
+  id          String @id @default(uuid())
+  marketId    String
+  supplierId  String
+  reference   String?
+  source      String @default("ROMANEIO")
+  status      String @default("DRAFT")
+  total       Float @default(0)
+  receivedAt  DateTime?
+  createdAt   DateTime @default(now())
+  market      Market @relation(fields: [marketId], references: [id])
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  items       PurchaseItem[]
+  @@index([marketId, createdAt])
+}
+
+model PurchaseItem {
+  id        String @id @default(uuid())
+  purchaseId String
+  productId  String
+  quantity   Int
+  unitCost   Float
+  total      Float
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product    Product @relation(fields: [productId], references: [id])
+  @@index([purchaseId])
 }
