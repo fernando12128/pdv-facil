@@ -5,6 +5,12 @@ export interface Product {
   barcode: string;
   category: string;
   brand: string;
+  ncm: string;
+  cest: string;
+  cfop: string;
+  fiscalUnit: string;
+  originCode: string;
+  taxSituation: string;
 
   isActive: boolean;
 
@@ -31,6 +37,12 @@ export interface ProductFormData {
   barcode: string;
   category: string;
   brand: string;
+  ncm: string;
+  cest: string;
+  cfop: string;
+  fiscalUnit: string;
+  originCode: string;
+  taxSituation: string;
 
   isActive: boolean;
 
