@@ -71,7 +71,14 @@ purchasesRoutes.get("/", async (req: AuthenticatedRequest, res) => {
 purchasesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
   if (!canManage(req)) return res.status(403).json({ message: "Sem permissão." });
   const marketId = req.user!.marketId;
-  const { supplierId, reference, items } = req.body || {};
+  const { supplierId, reference, items, dueDate } = req.body || {};
+  const payableDate = dueDate === undefined || dueDate === null || dueDate === ""
+    ? new Date().toISOString().slice(0, 10) : String(dueDate);
+  const payableAsDate = new Date(`${payableDate}T12:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(payableDate) || Number.isNaN(payableAsDate.getTime()) ||
+      payableAsDate.toISOString().slice(0, 10) !== payableDate) {
+    return res.status(400).json({ message: "Vencimento da compra inválido." });
+  }
   if (typeof supplierId !== "string" || !Array.isArray(items) || items.length < 1 || items.length > 200) {
     return res.status(400).json({ message: "Fornecedor e itens são obrigatórios (máximo 200)." });
   }
@@ -109,14 +116,36 @@ purchasesRoutes.post("/", async (req: AuthenticatedRequest, res) => {
     if (!Number.isSafeInteger(Math.round(total * 100))) {
       return res.status(400).json({ message: "Valor total inválido." });
     }
-    const purchase = await prisma.purchase.create({
-      data: {
-        marketId, supplierId,
-        reference: typeof reference === "string" ? reference.trim() || null : null,
-        total,
-        items: { create: normalized }
-      },
-      include: { items: true, supplier: true }
+    const amountCents = Math.round(total * 100);
+    // Prisma Int utiliza inteiro de 32 bits para os valores financeiros.
+    if (amountCents <= 0 || amountCents > 2147483647) {
+      return res.status(400).json({ message: "O total do romaneio deve ser positivo e compatível com o Financeiro." });
+    }
+    // Compra e lançamento financeiro são criados juntos: ou ambos salvam, ou nenhum salva.
+    const purchase = await prisma.$transaction(async tx => {
+      const created = await tx.purchase.create({
+        data: {
+          marketId, supplierId,
+          reference: typeof reference === "string" ? reference.trim() || null : null,
+          total,
+          items: { create: normalized }
+        },
+        include: { items: true, supplier: true }
+      });
+      await tx.financialEntry.create({
+        data: {
+          marketId,
+          purchaseId: created.id,
+          type: "PAYABLE",
+          category: "Compras de mercadorias",
+          description: `Compra - ${supplier.name}${created.reference ? ` (${created.reference})` : ""}`,
+          amountCents,
+          dueDate: payableAsDate,
+          status: "OPEN",
+          notes: "Gerado automaticamente pelo romaneio."
+        }
+      });
+      return created;
     });
     return res.status(201).json({ purchase });
   } catch (error) {
