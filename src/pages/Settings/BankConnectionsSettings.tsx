@@ -7,9 +7,12 @@ export default function BankConnectionsSettings() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [cardRules, setCardRules] = useState<Array<{ id: string; paymentMethod: string; providerName: string; feeBps: number; settlementDays: number }>>([]);
+  const [cardForm, setCardForm] = useState({ paymentMethod: "CREDIT" as "CREDIT" | "DEBIT", providerName: "", feePercent: "2,5", settlementDays: "30" });
   async function load() {
     const data = await bankingService.accounts();
     setAccounts(data.accounts);
+    setCardRules((await bankingService.cardFees()).rules);
   }
   useEffect(() => { void load().catch(e => setError(e instanceof Error ? e.message : "Falha ao carregar contas.")); }, []);
   async function save() {
@@ -20,6 +23,19 @@ export default function BankConnectionsSettings() {
       await load();
       setMessage("Conta cadastrada para importação de extratos.");
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao cadastrar conta."); }
+    finally { setBusy(false); }
+  }
+  async function saveCardFee() {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const percentage = Number(cardForm.feePercent.replace(",", "."));
+      await bankingService.saveCardFee({
+        paymentMethod: cardForm.paymentMethod, providerName: cardForm.providerName,
+        feePercent: percentage, settlementDays: Number(cardForm.settlementDays)
+      });
+      await load();
+      setMessage("Regra de cartão registrada. Os valores serão usados somente em previsões.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Falha ao configurar taxa."); }
     finally { setBusy(false); }
   }
   return <>
@@ -37,6 +53,20 @@ export default function BankConnectionsSettings() {
         {error && <p className="feedback-error">{error}</p>}
         {message && <p className="feedback-success">{message}</p>}
         <button className="primary-button" disabled={busy} onClick={() => void save()}>{busy ? "Salvando..." : "Cadastrar conta"}</button>
+      </div>
+    </section>
+    <section className="card">
+      <div className="card-header"><h2>Taxas de maquininhas (estimativa)</h2></div>
+      <div className="card-body" style={{ display: "grid", gap: 14 }}>
+        <p>Cadastre uma taxa para cada modalidade. O Financeiro exibirá previsões de recebíveis, nunca crédito bancário confirmado.</p>
+        {cardRules.map(rule => <div key={rule.id} className="setting-card"><div><strong>{rule.paymentMethod === "CREDIT" ? "Crédito" : "Débito"} • {rule.providerName}</strong><p>{(rule.feeBps / 100).toLocaleString("pt-BR")}% • prazo estimado: {rule.settlementDays} dia(s)</p></div></div>)}
+        <div className="grid-2">
+          <div className="field"><label>Modalidade</label><select value={cardForm.paymentMethod} onChange={e => setCardForm({ ...cardForm, paymentMethod: e.target.value as "CREDIT" | "DEBIT" })}><option value="CREDIT">Crédito</option><option value="DEBIT">Débito</option></select></div>
+          <div className="field"><label>Adquirente</label><input value={cardForm.providerName} onChange={e => setCardForm({ ...cardForm, providerName: e.target.value })} placeholder="Nome da maquininha" /></div>
+          <div className="field"><label>Taxa (%)</label><input inputMode="decimal" value={cardForm.feePercent} onChange={e => setCardForm({ ...cardForm, feePercent: e.target.value })} placeholder="2,5" /></div>
+          <div className="field"><label>Prazo de recebimento (dias)</label><input type="number" min={0} max={90} value={cardForm.settlementDays} onChange={e => setCardForm({ ...cardForm, settlementDays: e.target.value })} /></div>
+        </div>
+        <button className="primary-button" disabled={busy} onClick={() => void saveCardFee()}>Salvar taxa de cartão</button>
       </div>
     </section>
     <section className="card">
