@@ -23,6 +23,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
   const [supplierId, setSupplierId] = useState("");
   const [reference, setReference] = useState("");
   const [dueDate, setDueDate] = useState(today);
+  const [installmentCount, setInstallmentCount] = useState(1);
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -65,12 +66,13 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
       new Set(items.map(i => i.productId)).size !== items.length) {
       return setError("Selecione fornecedor e produtos diferentes, com quantidade e custo válidos.");
     }
+    if (!Number.isSafeInteger(installmentCount) || installmentCount < 1 || installmentCount > 36) return setError("Informe entre 1 e 36 parcelas.");
     setBusy(true); setError(""); setMessage("");
     try {
-      await purchasesService.create({ supplierId, reference, dueDate, items });
+      await purchasesService.create({ supplierId, reference, dueDate, installmentCount, items });
       await load();
       setPurchaseModal(false);
-      setSupplierId(""); setReference(""); setDueDate(today()); setLines([emptyLine()]);
+      setSupplierId(""); setReference(""); setDueDate(today()); setInstallmentCount(1); setLines([emptyLine()]);
       setMessage("Romaneio salvo e conta a pagar criada automaticamente no Financeiro. Confirme a mercadoria ao receber.");
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao salvar compra."); }
     finally { setBusy(false); }
@@ -150,6 +152,7 @@ export default function PurchasesPage({ onLogout, onNavigate }: Props) {
           </select></div>
           <div className="field"><label>Nº do pedido / Romaneio</label><input maxLength={100} value={reference} onChange={e => setReference(e.target.value)} /></div>
           <div className="field"><label>Vencimento da conta a pagar</label><input type="date" required value={dueDate} onChange={e => setDueDate(e.target.value)} /></div>
+          <div className="field"><label>Quantidade de parcelas</label><input type="number" min="1" max="36" step="1" value={installmentCount} onChange={e => setInstallmentCount(Number(e.target.value))} /></div>
         </div>
         <div className="purchases-lines">
           {lines.map((line, index) => <div className="purchases-line" key={index}>
