@@ -1,6 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
+import { getStockRotation } from "../lib/stockRotation";
 import {
   authMiddleware,
   AuthenticatedRequest,
@@ -258,6 +259,16 @@ managementRoutes.put("/market", async (req: AuthenticatedRequest, res) => {
   }
 
   return res.json({ market });
+});
+
+managementRoutes.get("/stock/rotation", async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Não autenticado." });
+    return res.json(await getStockRotation(req.user.marketId));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Erro ao consultar giro de estoque." });
+  }
 });
 
 managementRoutes.patch(
