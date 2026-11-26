@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import AdminLayout from "../../components/layout/AdminLayout";
 import type { AppPage } from "../../components/Sidebar/Sidebar";
 import { managementService } from "../../services/managementService";
+import BankConnectionsSettings from "./BankConnectionsSettings";
 
 type Props = { onLogout: () => void; onNavigate: (page: AppPage) => void };
 
@@ -49,6 +50,7 @@ export default function SettingsPage({ onLogout, onNavigate }: Props) {
             <button className="primary-button" onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
           </div>
         </section>
+        <BankConnectionsSettings />
         <section className="card">
           <div className="card-header"><h2>Conta</h2></div>
           <div className="card-body"><p style={{ color: "var(--muted-foreground)", fontSize: 13 }}>Email: {form.email}</p><button className="outline-button" onClick={onLogout}>Sair da conta</button></div>
