@@ -57,6 +57,7 @@ purchasesRoutes.get("/", async (req: AuthenticatedRequest, res) => {
       where: { marketId: req.user!.marketId },
       include: {
         supplier: { select: { id: true, name: true } },
+        financialEntries: { select: { id: true, dueDate: true, status: true, amountCents: true, installmentNumber: true, installmentCount: true, bankTransactionId: true, settledAt: true }, orderBy: { dueDate: "asc" } },
         items: { include: { product: { select: { name: true, sku: true } } } }
       },
       orderBy: { createdAt: "desc" }
