@@ -70,6 +70,8 @@ export function BankingPanel({ month }: { month: string }) {
   const [selected, setSelected] = useState("");
   const [suggestions, setSuggestions] = useState<Array<{ id: string; description: string; amount: number; dueDate: string }>>([]);
   const [selectedEntry, setSelectedEntry] = useState("");
+  const [selectedSale, setSelectedSale] = useState("");
+  const [saleSuggestions, setSaleSuggestions] = useState<Array<{ id: string; createdAt: string; paymentMethod: string; gross: number; net: number; fee: number }>>([]);
   const [newCategory, setNewCategory] = useState("Tarifas e outros");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -97,8 +99,16 @@ export function BankingPanel({ month }: { month: string }) {
     finally { setBusy(false); }
   }
   async function suggest(id: string) {
-    setBusy(true); setError(""); setSelected(id); setSelectedEntry("");
-    try { setSuggestions((await bankingService.suggestions(id)).suggestions); }
+    setBusy(true); setError(""); setSelected(id); setSelectedEntry(""); setSelectedSale("");
+    try {
+      const transaction = transactions.find(t => t.id === id);
+      const [entries, sales] = await Promise.all([
+        bankingService.suggestions(id),
+        transaction && transaction.amountCents > 0 ? bankingService.saleSuggestions(id) : Promise.resolve({ suggestions: [] })
+      ]);
+      setSuggestions(entries.suggestions);
+      setSaleSuggestions(sales.suggestions);
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Erro ao buscar sugestões."); }
     finally { setBusy(false); }
   }
@@ -107,10 +117,21 @@ export function BankingPanel({ month }: { month: string }) {
     setBusy(true); setError("");
     try {
       await bankingService.reconcile(selected, selectedEntry);
-      setSelected(""); setSuggestions([]); setSelectedEntry("");
+      setSelected(""); setSuggestions([]); setSaleSuggestions([]); setSelectedEntry(""); setSelectedSale("");
       setMessage("Movimentação conciliada. Conta marcada como liquidada.");
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao conciliar."); }
+    finally { setBusy(false); }
+  }
+  async function reconcileSale() {
+    if (!selected || !selectedSale || !window.confirm("Confirmar recebimento bancário desta venda?")) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await bankingService.reconcileSale(selected, selectedSale);
+      setSelected(""); setSuggestions([]); setSaleSuggestions([]); setSelectedSale("");
+      setMessage("Recebimento da venda conciliado sem duplicar receita na DRE.");
+      await load();
+    } catch (err) { setError(err instanceof Error ? err.message : "Falha ao conciliar venda."); }
     finally { setBusy(false); }
   }
   async function classify() {
@@ -162,7 +183,15 @@ export function BankingPanel({ month }: { month: string }) {
           <option value="">Selecione um lançamento</option>
           {suggestions.map(e => <option key={e.id} value={e.id}>{e.description} • {brl(e.amount)} • {formatDate(e.dueDate)}</option>)}
         </select>
-        {!suggestions.length && <p>Nenhuma correspondência sugerida. Você pode classificar como uma nova despesa ou receita.</p>}
+        {saleSuggestions.length > 0 && <div className="field">
+          <label>Ou conciliar com venda existente (Pix/cartão)</label>
+          <select value={selectedSale} onChange={e => setSelectedSale(e.target.value)}>
+            <option value="">Selecione a venda</option>
+            {saleSuggestions.map(sale => <option key={sale.id} value={sale.id}>{sale.paymentMethod} • {brl(sale.net)} líquido • {formatDate(sale.createdAt)} (taxa: {brl(sale.fee)})</option>)}
+          </select>
+          <button className="outline-button" disabled={busy || !selectedSale} onClick={() => void reconcileSale()}>Conciliar venda</button>
+        </div>}
+        {!suggestions.length && !saleSuggestions.length && <p>Nenhuma correspondência sugerida. Você pode classificar como uma nova despesa ou receita.</p>}
         <div className="field"><label>Ou classificar como novo lançamento</label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="Ex.: Tarifa bancária" /></div>
         <button className="outline-button" disabled={busy || !newCategory.trim()} onClick={() => void classify()}>Criar lançamento a partir do extrato</button>
         <div><button className="primary-button" disabled={busy || !selectedEntry} onClick={() => void reconcile()}>Confirmar conciliação</button>{" "}<button className="outline-button" onClick={() => setSelected("")}>Cancelar</button></div>
