@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Eye } from "lucide-react";
+import { Eye, Printer } from "lucide-react";
 import AdminLayout from "../../components/layout/AdminLayout";
 import type { AppPage } from "../../components/Sidebar/Sidebar";
 import { listSalesRequest, type Sale } from "../../services/salesService";
+import { fiscalService } from "../../services/fiscalService";
+import { renderNonFiscalReceipt } from "../../utils/printReceipt";
 
 type Props = { onLogout: () => void; onNavigate: (page: AppPage) => void };
 const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -17,10 +19,26 @@ export default function SalesPage({ onLogout, onNavigate }: Props) {
   const [sales, setSales] = useState<Sale[]>([]);
   const [selected, setSelected] = useState<Sale | null>(null);
   const [error, setError] = useState("");
+  const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     listSalesRequest().then((result) => setSales(result.sales)).catch((value) => setError(value instanceof Error ? value.message : "Erro ao carregar vendas."));
   }, []);
+
+  async function printReceipt(sale: Sale) {
+    // Abre a janela antes da requisição para evitar bloqueio de popups.
+    const popup = window.open("", "_blank", "width=430,height=780");
+    if (!popup) return setError("O navegador bloqueou a impressão. Permita pop-ups para o PDV Fácil.");
+    setPrinting(true); setError("");
+    try {
+      const preview = await fiscalService.preview(sale.id);
+      renderNonFiscalReceipt(popup, preview);
+      popup.focus();
+    } catch (err) {
+      popup.close();
+      setError(err instanceof Error ? err.message : "Não foi possível preparar o comprovante.");
+    } finally { setPrinting(false); }
+  }
 
   return (
     <AdminLayout activePage="sales" onNavigate={onNavigate} onLogout={onLogout}>
@@ -57,7 +75,7 @@ export default function SalesPage({ onLogout, onNavigate }: Props) {
               {selected.discount > 0 && <div className="detail-line"><span>Desconto</span><span>- {brl(selected.discount)}</span></div>}
               <div className="detail-line"><strong>Total</strong><strong>{brl(selected.total)}</strong></div>
             </div>
-            <div className="modal-actions"><button className="outline-button" onClick={() => setSelected(null)}>Fechar</button></div>
+            <div className="modal-actions"><button className="outline-button" disabled={printing} onClick={() => void printReceipt(selected)}><Printer size={16} /> {printing ? "Preparando..." : "Imprimir comprovante não fiscal"}</button><button className="outline-button" onClick={() => setSelected(null)}>Fechar</button></div>
           </div>
         </div>
       )}
