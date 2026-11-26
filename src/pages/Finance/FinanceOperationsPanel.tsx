@@ -69,6 +69,7 @@ export function BankingPanel() {
   const [selected, setSelected] = useState("");
   const [suggestions, setSuggestions] = useState<Array<{ id: string; description: string; amount: number; dueDate: string }>>([]);
   const [selectedEntry, setSelectedEntry] = useState("");
+  const [newCategory, setNewCategory] = useState("Tarifas e outros");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -111,6 +112,17 @@ export function BankingPanel() {
     } catch (err) { setError(err instanceof Error ? err.message : "Falha ao conciliar."); }
     finally { setBusy(false); }
   }
+  async function classify() {
+    if (!selected || !newCategory.trim() || !window.confirm("Criar lançamento financeiro liquidado a partir desta movimentação?")) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await bankingService.classify(selected, newCategory);
+      setSelected(""); setSuggestions([]); setSelectedEntry("");
+      setMessage("Movimentação classificada e lançamento financeiro criado.");
+      await load();
+    } catch (err) { setError(err instanceof Error ? err.message : "Falha ao classificar."); }
+    finally { setBusy(false); }
+  }
   return <section className="card">
     <div className="card-header"><h2>Conciliação por extrato</h2></div>
     <div className="card-body" style={{ display: "grid", gap: 14 }}>
@@ -130,12 +142,14 @@ export function BankingPanel() {
       </tbody></table>{!transactions.length && <p className="empty-state">Nenhum extrato importado.</p>}</div>
       {selected && <div className="info-box" style={{ display: "grid", gap: 10 }}>
         <strong>Selecione o lançamento correspondente</strong>
-        <p>As sugestões exigem mesmo valor e tipo, com vencimento próximo à data da movimentação.</p>
+        <p>As sugestões exigem mesmo valor e tipo, com vencimento próximo à data da movimentação; lançamentos já liquidados também podem ser vinculados.</p>
         <select value={selectedEntry} onChange={e => setSelectedEntry(e.target.value)}>
           <option value="">Selecione um lançamento</option>
           {suggestions.map(e => <option key={e.id} value={e.id}>{e.description} • {brl(e.amount)} • {formatDate(e.dueDate)}</option>)}
         </select>
-        {!suggestions.length && <p>Nenhuma correspondência sugerida. Verifique o lançamento no Financeiro.</p>}
+        {!suggestions.length && <p>Nenhuma correspondência sugerida. Você pode classificar como uma nova despesa ou receita.</p>}
+        <div className="field"><label>Ou classificar como novo lançamento</label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="Ex.: Tarifa bancária" /></div>
+        <button className="outline-button" disabled={busy || !newCategory.trim()} onClick={() => void classify()}>Criar lançamento a partir do extrato</button>
         <div><button className="primary-button" disabled={busy || !selectedEntry} onClick={() => void reconcile()}>Confirmar conciliação</button>{" "}<button className="outline-button" onClick={() => setSelected("")}>Cancelar</button></div>
       </div>}
     </div>
