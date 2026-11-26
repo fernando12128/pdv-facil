@@ -41,7 +41,8 @@ export default function FinancePage({ onLogout, onNavigate }: Props) {
   function exportCsv() {
     const heading = ["Descrição","Tipo","Categoria","Vencimento","Status","Valor"];
     const csvRows = [heading,...filtered.map(e => [e.description,e.type,e.category,e.dueDate.slice(0,10),e.status,e.amount.toFixed(2).replace(".",",")])];
-    const csv = String.fromCharCode(0xFEFF) + csvRows.map(row => row.map(v => `"${String(v).replace(/"/g, `""`)}"`).join(";")).join(String.fromCharCode(13, 10));
+    const safeCell = (value: string) => /^[=+@-]/.test(value.trimStart()) ? "'" + value : value;
+    const csv = String.fromCharCode(0xFEFF) + csvRows.map(row => row.map(v => `"${safeCell(String(v)).replace(/"/g, `""`)}"`).join(";")).join(String.fromCharCode(13, 10));
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = `pdv-facil-financeiro-${month}.csv`;
