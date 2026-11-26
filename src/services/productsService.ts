@@ -9,6 +9,12 @@ export type Product = {
   barcode?: string | null;
   category?: string | null;
   brand?: string | null;
+  ncm?: string | null;
+  cest?: string | null;
+  cfop?: string | null;
+  fiscalUnit?: string | null;
+  originCode?: string | null;
+  taxSituation?: string | null;
 
   isActive: boolean;
 
@@ -38,6 +44,12 @@ export type CreateProductData = {
   barcode?: string;
   category?: string;
   brand?: string;
+  ncm?: string;
+  cest?: string;
+  cfop?: string;
+  fiscalUnit?: string;
+  originCode?: string;
+  taxSituation?: string;
 
   isActive: boolean;
 
