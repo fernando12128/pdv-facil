@@ -107,6 +107,32 @@ try {
   const tenantRotation = await request("/management/stock/rotation", { token: tokenB });
   assert(tenantRotation.status === 200 && !tenantRotation.data.items.some(item => item.id === oldProduct.data.product.id),
     "Produtos sem giro isolados entre empresas");
+  const fiscalBefore = await request("/fiscal/settings", { token: tokenA });
+  assert(fiscalBefore.status === 200 && fiscalBefore.data.settings.issuanceEnabled === false &&
+    fiscalBefore.data.integration.apiCallsEnabled === false, "Emissão fiscal inicia completamente desativada");
+  const invalidFiscal = await request("/fiscal/settings", { token: tokenA, method: "PUT", body: {
+    legalName: "Comércio Teste", cnpj: "11111111111111", receiptWidth: 80
+  } });
+  assert(invalidFiscal.status === 400, "CNPJ inválido bloqueado");
+  const configured = await request("/fiscal/settings", { token: tokenA, method: "PUT", body: {
+    legalName: "Loja Homologação", tradeName: "Loja de Teste", cnpj: "11222333000181",
+    stateCode: "SP", cityName: "São Paulo", cityIbgeCode: "3550308",
+    taxRegime: "SIMPLES_NACIONAL", street: "Rua Teste", streetNumber: "10",
+    receiptWidth: 58, issuanceEnabled: true, environment: "PRODUCTION"
+  } });
+  assert(configured.status === 200 && configured.data.settings.issuanceEnabled === false &&
+    configured.data.settings.environment === "HOMOLOGATION", "Configurações impedem ativação fiscal por requisição");
+  const fiscalOtherTenant = await request("/fiscal/settings", { token: tokenB });
+  assert(fiscalOtherTenant.status === 200 && !fiscalOtherTenant.data.settings.cnpj,
+    "Configurações fiscais isoladas entre empresas");
+  const fiscalProductResult = await request(`/products/${product.data.product.id}`, { token: tokenA, method: "PUT", body: {
+    name: "Produto Teste", sku: "", barcode: "", category: "", brand: "",
+    isActive: true, salePrice: 20, cost: 10, useSameOnlinePrice: true, onlinePrice: 20,
+    stock: 5, minStock: 0, allowBackorder: false, isVisibleOnline: false,
+    description: "", imageUrl: "", isFeatured: false, allowPickup: true, allowDelivery: true,
+    ncm: "22021000", cest: "", cfop: "5102", fiscalUnit: "UN", originCode: "0", taxSituation: "102"
+  } });
+  assert(fiscalProductResult.status === 200 && fiscalProductResult.data.product.ncm === "22021000", "Classificação fiscal do produto atualizada");
   const supplier = await request("/purchases/suppliers", { token: tokenA, method: "POST", body: { name: "Distribuidora Teste" } });
   assert(supplier.status === 201, "Fornecedor criado");
   const dueDate = "2026-12-10";
@@ -216,6 +242,52 @@ try {
     paymentMethod: "DEBIT", providerName: "Maquininha fictícia", feePercent: 1.75, settlementDays: 1
   } });
   assert(cardRule.status === 200 && cardRule.data.rule.feeBps === 175, "Taxa de cartão salva por empresa");
+  const secondMachine = await request("/finance-ops/card-fees", { token: tokenA, method: "PUT", body: {
+    paymentMethod: "DEBIT", providerName: "Maquininha alternativa", feePercent: 0.9, settlementDays: 2, isDefault: false
+  } });
+  assert(secondMachine.status === 200, "Segunda maquininha na mesma modalidade cadastrada");
+  const pixTerminal = await request("/finance-ops/card-fees", { token: tokenA, method: "PUT", body: {
+    paymentMethod: "PIX", providerName: "Pix maquininha", feePercent: 0, settlementDays: 0, isDefault: true
+  } });
+  assert(pixTerminal.status === 200 && pixTerminal.data.rule.paymentMethod === "PIX", "Pix tem maquininha própria");
+  const terminalList = await request("/finance-ops/card-fees", { token: tokenA });
+  assert(terminalList.data.rules.filter(r => r.paymentMethod === "DEBIT").length === 2 &&
+    terminalList.data.rules.find(r => r.providerName === "Maquininha fictícia")?.isDefault === true,
+    "Regras para várias maquininhas coexistem sem substituir a padrão");
+  const newDefault = await request(`/finance-ops/card-fees/${secondMachine.data.rule.id}/default`, {
+    token: tokenA, method: "PATCH"
+  });
+  assert(newDefault.status === 200, "Alternativa pode tornar-se padrão");
+  const afterDefault = await request("/finance-ops/card-fees", { token: tokenA });
+  assert(afterDefault.data.rules.find(r => r.id === secondMachine.data.rule.id)?.isDefault === true &&
+    afterDefault.data.rules.find(r => r.id === cardRule.data.rule.id)?.isDefault === false,
+    "Somente uma maquininha padrão por modalidade");
+  const alternateDisabled = await request(`/finance-ops/card-fees/${secondMachine.data.rule.id}/status`, {
+    token: tokenA, method: "PATCH"
+  });
+  assert(alternateDisabled.status === 200, "Maquininha pode ser desativada");
+  const afterDisable = await request("/finance-ops/card-fees", { token: tokenA });
+  assert(afterDisable.data.rules.find(r => r.id === cardRule.data.rule.id)?.isDefault === true &&
+    afterDisable.data.rules.find(r => r.id === secondMachine.data.rule.id)?.active === false,
+    "Ao desativar padrão, alternativa ativa assume");
+  const forbiddenChange = await request(`/finance-ops/card-fees/${cardRule.data.rule.id}/default`, {
+    token: tokenB, method: "PATCH"
+  });
+  assert(forbiddenChange.status === 404, "Outra empresa não altera maquininha");
+  const disableEstimates = await request("/finance-ops/card-fees/settings", {
+    token: tokenA, method: "PATCH", body: { enabled: false }
+  });
+  assert(disableEstimates.status === 200 && disableEstimates.data.estimatesEnabled === false,
+    "Empresa pode desligar cálculo de taxas");
+  const disabledForecast = await request("/finance-ops/card-forecast?month=2026-12", { token: tokenA });
+  assert(disabledForecast.status === 200 && disabledForecast.data.estimatesEnabled === false &&
+    disabledForecast.data.forecast.length === 0, "Previsão realmente desativada");
+  const otherFeeSettings = await request("/finance-ops/card-fees", { token: tokenB });
+  assert(otherFeeSettings.data.estimatesEnabled === true, "Desativação de estimativas não afeta outra empresa");
+  const enableEstimates = await request("/finance-ops/card-fees/settings", {
+    token: tokenA, method: "PATCH", body: { enabled: true }
+  });
+  assert(enableEstimates.status === 200, "Reativação de estimativas funciona");
   const otherRules = await request("/finance-ops/card-fees", { token: tokenB });
   assert(otherRules.status === 200 && otherRules.data.rules.length === 0, "Configuração de cartão não vaza entre empresas");
   const forecast = await request("/finance-ops/card-forecast?month=2026-12", { token: tokenA });
@@ -236,6 +308,13 @@ try {
   } });
   assert(sale.status === 201 && sale.data.sale.total === 20 && sale.data.sale.items[0].costAtSale > 0,
     "Venda Pix guarda custo histórico para DRE");
+  const preview = await request(`/fiscal/sales/${sale.data.sale.id}/preview`, { token: tokenA });
+  assert(preview.status === 200 && preview.data.documentType === "NON_FISCAL_PREVIEW" &&
+    preview.data.fiscalEmissionEnabled === false && preview.data.receiptWidth === 58 &&
+    preview.data.sale.total === 20, "Prévia não fiscal usa dados da venda sem emitir nota");
+  const previewOtherTenant = await request(`/fiscal/sales/${sale.data.sale.id}/preview`, { token: tokenB });
+  assert(previewOtherTenant.status === 404, "Não expõe comprovantes entre empresas");
+
   const pixBank = await request("/finance-ops/transactions/import", { token: tokenA, method: "POST", body: {
     bankAccountId: idBank, transactions: [{ date: new Date().toISOString().slice(0,10), description: "Pix recebido", amount: 20, externalId: "PIX-EXTRATO-001" }]
   } });

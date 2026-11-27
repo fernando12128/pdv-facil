@@ -15,6 +15,7 @@ import { cashSessionsRoutes } from "./routes/cashSessions.routes";
 import { onlineOrdersRoutes } from "./routes/onlineOrders.routes";
 import { reportsRoutes } from "./routes/reports.routes";
 import { purchasesRoutes } from "./routes/purchases.routes";
+import { fiscalRoutes } from "./routes/fiscal.routes";
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use("/auth", authRoutes);
 app.use("/finance", financeRoutes);
 app.use("/finance-ops", financialOperationsRoutes);
 app.use("/purchases", purchasesRoutes);
+app.use("/fiscal", fiscalRoutes);
 app.use("/products", productsRoutes);
 app.use("/sales", salesRoutes);
 app.use("/cash-movements", cashMovementsRoutes);

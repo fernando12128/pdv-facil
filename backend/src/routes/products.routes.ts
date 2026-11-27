@@ -7,6 +7,29 @@ import {
 
 export const productsRoutes = Router();
 
+function validateFiscalProduct(input: any) {
+  const fields = ["ncm", "cest", "cfop", "fiscalUnit", "originCode", "taxSituation"] as const;
+  for (const field of fields) {
+    if (input[field] != null && typeof input[field] !== "string") return "Campos fiscais devem ser texto.";
+  }
+  const normalized = {
+    ncm: input.ncm?.trim() || null,
+    cest: input.cest?.trim() || null,
+    cfop: input.cfop?.trim() || null,
+    fiscalUnit: input.fiscalUnit?.trim().toUpperCase() || "UN",
+    originCode: input.originCode?.trim() || "0",
+    taxSituation: input.taxSituation?.trim() || null
+  };
+  if (normalized.ncm && !/^\d{8}$/.test(normalized.ncm)) return "NCM precisa de 8 dígitos.";
+  if (normalized.cest && !/^\d{7}$/.test(normalized.cest)) return "CEST precisa de 7 dígitos.";
+  if (normalized.cfop && !/^\d{4}$/.test(normalized.cfop)) return "CFOP precisa de 4 dígitos.";
+  if (!/^[A-Z]{1,6}$/.test(normalized.fiscalUnit)) return "Unidade fiscal inválida.";
+  if (!/^[0-8]$/.test(normalized.originCode)) return "Origem do produto inválida.";
+  if (normalized.taxSituation && !/^\d{2,3}$/.test(normalized.taxSituation)) return "CST/CSOSN inválido.";
+  return normalized;
+}
+
+
 productsRoutes.use(authMiddleware);
 
 productsRoutes.get("/", async (req: AuthenticatedRequest, res) => {
@@ -78,6 +101,9 @@ productsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
       });
     }
 
+    const fiscalData = validateFiscalProduct(req.body || {});
+    if (typeof fiscalData === "string") return res.status(400).json({ message: fiscalData });
+
     const parsedSalePrice = Number(salePrice);
     const parsedCost = Number(cost || 0);
     const parsedStock = Number(stock || 0);
@@ -129,6 +155,7 @@ productsRoutes.post("/", async (req: AuthenticatedRequest, res) => {
         barcode: barcode ? String(barcode).trim() : null,
         category: category ? String(category).trim() : null,
         brand: brand ? String(brand).trim() : null,
+        ...fiscalData,
 
         isActive: typeof isActive === "boolean" ? isActive : true,
 
@@ -220,6 +247,9 @@ productsRoutes.put("/:id", async (req: AuthenticatedRequest, res) => {
       });
     }
 
+    const fiscalData = validateFiscalProduct(req.body || {});
+    if (typeof fiscalData === "string") return res.status(400).json({ message: fiscalData });
+
     const parsedSalePrice = Number(salePrice);
     const parsedCost = Number(cost || 0);
     const parsedStock = Number(stock || 0);
@@ -272,6 +302,7 @@ productsRoutes.put("/:id", async (req: AuthenticatedRequest, res) => {
         barcode: barcode ? String(barcode).trim() : null,
         category: category ? String(category).trim() : null,
         brand: brand ? String(brand).trim() : null,
+        ...fiscalData,
 
         isActive: typeof isActive === "boolean" ? isActive : true,
 

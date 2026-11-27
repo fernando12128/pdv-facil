@@ -4,7 +4,7 @@ import ToggleSwitch from "../ui/ToggleSwitch";
 import type { ProductFormData } from "../../types/product";
 import "./ProductModal.css";
 
-type ProductTab = "basic" | "prices" | "stock" | "online";
+type ProductTab = "basic" | "prices" | "stock" | "online" | "fiscal";
 
 interface ProductModalProps {
   open: boolean;
@@ -24,6 +24,12 @@ const initialForm: ProductFormData = {
   barcode: "",
   category: "",
   brand: "",
+  ncm: "",
+  cest: "",
+  cfop: "",
+  fiscalUnit: "UN",
+  originCode: "0",
+  taxSituation: "",
 
   isActive: true,
 
@@ -130,6 +136,7 @@ export default function ProductModal({
           >
             Loja virtual
           </button>
+          <button type="button" className={activeTab === "fiscal" ? "active" : ""} onClick={() => setActiveTab("fiscal")}>Fiscal</button>
         </div>
 
         <div className="product-modal-body">
@@ -283,6 +290,21 @@ export default function ProductModal({
                 />
               </div>
             </>
+          )}
+
+          {activeTab === "fiscal" && (
+            <div style={{ display: "grid", gap: 14 }}>
+              <div className="info-box">Preparação fiscal para NF-e/NFC-e. Informe os códigos conforme a classificação do produto e orientação da contabilidade. Nenhum documento é emitido nesta etapa.</div>
+              <div className="grid-2">
+                <div className="field"><label>NCM (8 dígitos)</label><input inputMode="numeric" maxLength={8} value={form.ncm} onChange={e => updateField("ncm", e.target.value.replace(/\D/g, ""))} placeholder="00000000" /></div>
+                <div className="field"><label>CEST (quando aplicável)</label><input inputMode="numeric" maxLength={7} value={form.cest} onChange={e => updateField("cest", e.target.value.replace(/\D/g, ""))} placeholder="0000000" /></div>
+                <div className="field"><label>CFOP</label><input inputMode="numeric" maxLength={4} value={form.cfop} onChange={e => updateField("cfop", e.target.value.replace(/\D/g, ""))} placeholder="5102" /></div>
+                <div className="field"><label>Unidade tributável</label><input maxLength={6} value={form.fiscalUnit} onChange={e => updateField("fiscalUnit", e.target.value.toUpperCase())} placeholder="UN" /></div>
+                <div className="field"><label>Origem da mercadoria (0 a 8)</label><select value={form.originCode} onChange={e => updateField("originCode", e.target.value)}>{Array.from({ length: 9 }, (_, i) => <option key={i} value={String(i)}>{i}</option>)}</select></div>
+                <div className="field"><label>CST / CSOSN</label><input inputMode="numeric" maxLength={3} value={form.taxSituation} onChange={e => updateField("taxSituation", e.target.value.replace(/\D/g, ""))} placeholder="Ex.: 102" /></div>
+              </div>
+              <p style={{ color: "var(--muted-foreground)", fontSize: 12 }}>Campos de preparação, não são calculados automaticamente. ICMS, PIS, COFINS e demais regras tributárias serão validados no módulo emissor, com suporte contábil.</p>
+            </div>
           )}
 
           {activeTab === "online" && (

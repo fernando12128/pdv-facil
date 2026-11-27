@@ -41,7 +41,7 @@
 
 .product-modal-tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   background: #eef2f7;
   border-radius: 14px;
   padding: 4px;
@@ -186,4 +186,12 @@
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 8px 18px rgba(31, 115, 232, 0.25);
+}
+.product-modal { max-height: calc(100vh - 36px); overflow-y: auto; }
+@media (max-width: 600px) {
+  .product-modal-overlay { padding: 10px; }
+  .product-modal { padding: 16px 12px; }
+  .product-modal-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .product-modal-tabs button { font-size: 12px; }
+  .product-modal .grid-2, .product-modal .grid-3 { grid-template-columns: 1fr; }
 }

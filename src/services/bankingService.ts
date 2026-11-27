@@ -5,14 +5,26 @@ export type BankAccount = { id: string; name: string; bankName: string; accountT
 export type BankTransaction = { id: string; bankAccountId: string; externalId: string; date: string; description: string; amount: number; amountCents: number; status: string; bankAccount: { name: string; bankName: string }; financialEntry: { id: string; description: string } | null };
 export type RecurringRule = { id: string; description: string; category: string; type: "PAYABLE" | "RECEIVABLE"; amountCents: number; nextDueDate: string; active: boolean };
 export type FinanceAuditLog = { id: string; action: string; targetType: string; targetId: string; details: string | null; createdAt: string };
+export type TerminalRate = {
+  id: string; paymentMethod: "CREDIT" | "DEBIT" | "PIX";
+  providerName: string; feeBps: number; settlementDays: number;
+  active: boolean; isDefault: boolean;
+};
 const base = "/finance-ops";
 export const bankingService = {
   accounts: () => apiRequest<{ accounts: BankAccount[] }>(base + "/accounts", { token: token() }),
   createAccount: (data: { name: string; bankName: string; accountType: string; lastFour?: string }) =>
     apiRequest<{ account: BankAccount }>(base + "/accounts", { method: "POST", token: token(), body: data }),
-  cardFees: () => apiRequest<{ rules: Array<{ id: string; paymentMethod: string; providerName: string; feeBps: number; settlementDays: number }> }>(base + "/card-fees", { token: token() }),
-  saveCardFee: (data: { paymentMethod: "CREDIT" | "DEBIT"; providerName: string; feePercent: number; settlementDays: number }) => apiRequest<{ rule: { id: string } }>(base + "/card-fees", { method: "PUT", token: token(), body: data }),
-  cardForecast: (month: string) => apiRequest<{ forecast: Array<{ saleId: string; paymentMethod: string; provider: string | null; gross: number; fee: number | null; net: number | null; expectedAt: string | null }>; notice: string }>(base + `/card-forecast?month=${encodeURIComponent(month)}`, { token: token() }),
+  cardFees: () => apiRequest<{ rules: TerminalRate[]; estimatesEnabled: boolean }>(base + "/card-fees", { token: token() }),
+  saveCardFee: (data: { paymentMethod: TerminalRate["paymentMethod"]; providerName: string; feePercent: number; settlementDays: number; isDefault?: boolean }) =>
+    apiRequest<{ rule: TerminalRate }>(base + "/card-fees", { method: "PUT", token: token(), body: data }),
+  setCardEstimates: (enabled: boolean) =>
+    apiRequest<{ estimatesEnabled: boolean }>(base + "/card-fees/settings", { method: "PATCH", token: token(), body: { enabled } }),
+  setDefaultCardFee: (id: string) =>
+    apiRequest<{ message: string }>(base + `/card-fees/${encodeURIComponent(id)}/default`, { method: "PATCH", token: token() }),
+  toggleCardFee: (id: string) =>
+    apiRequest<{ message: string }>(base + `/card-fees/${encodeURIComponent(id)}/status`, { method: "PATCH", token: token() }),
+  cardForecast: (month: string) => apiRequest<{ estimatesEnabled: boolean; forecast: Array<{ saleId: string; paymentMethod: string; provider: string | null; gross: number; fee: number | null; net: number | null; expectedAt: string | null }>; notice: string }>(base + `/card-forecast?month=${encodeURIComponent(month)}`, { token: token() }),
   connectors: () => apiRequest<{ providers: Array<{ id: string; label: string; status: string }>; mode: string }>(base + "/connectors", { token: token() }),
   transactions: () => apiRequest<{ transactions: BankTransaction[] }>(base + "/transactions", { token: token() }),
   importTransactions: (data: { bankAccountId: string; transactions: Array<{ date: string; description: string; amount: number; externalId?: string }> }) =>

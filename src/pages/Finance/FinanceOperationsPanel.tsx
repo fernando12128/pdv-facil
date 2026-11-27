@@ -67,6 +67,7 @@ export function BankingPanel({ month }: { month: string }) {
   const [accountId, setAccountId] = useState("");
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [forecast, setForecast] = useState<Array<{ saleId: string; paymentMethod: string; provider: string | null; gross: number; fee: number | null; net: number | null; expectedAt: string | null }>>([]);
+  const [estimatesEnabled, setEstimatesEnabled] = useState(true);
   const [selected, setSelected] = useState("");
   const [suggestions, setSuggestions] = useState<Array<{ id: string; description: string; amount: number; dueDate: string }>>([]);
   const [selectedEntry, setSelectedEntry] = useState("");
@@ -78,7 +79,7 @@ export function BankingPanel({ month }: { month: string }) {
   const [error, setError] = useState("");
   async function load() {
     const [a,t,c] = await Promise.all([bankingService.accounts(), bankingService.transactions(), bankingService.cardForecast(month)]);
-    setAccounts(a.accounts); setTransactions(t.transactions); setForecast(c.forecast);
+    setAccounts(a.accounts); setTransactions(t.transactions); setForecast(c.forecast); setEstimatesEnabled(c.estimatesEnabled);
     if (!accountId && a.accounts.length) setAccountId(a.accounts[0].id);
   }
   useEffect(() => { void load().catch(e => setError(e instanceof Error ? e.message : "Falha ao carregar extratos.")); }, [month]);
@@ -147,16 +148,16 @@ export function BankingPanel({ month }: { month: string }) {
   }
   return <>
     <section className="card">
-      <div className="card-header"><h2>Previsão de recebíveis de cartão • {month}</h2></div>
+      <div className="card-header"><h2>Previsão de recebíveis de cartão e Pix • {month}</h2></div>
       <div className="card-body">
-        <p>Estimativa gerencial calculada pelas taxas cadastradas em Configurações. Não representa crédito conciliado ou previsão contratual garantida.</p>
+        <p>{estimatesEnabled ? "Estimativa gerencial baseada na maquininha padrão por modalidade. Não identifica qual equipamento foi usado em cada venda e não representa crédito bancário confirmado." : "Cálculo de taxas desativado em Configurações. Nenhuma previsão é calculada."}</p>
         <div className="table-wrap"><table className="data-table"><thead><tr><th>Modalidade</th><th>Adquirente</th><th>Bruto</th><th>Taxa estimada</th><th>Líquido</th><th>Recebimento previsto</th></tr></thead><tbody>
-          {forecast.map(row => <tr key={row.saleId}><td>{row.paymentMethod === "CREDIT" ? "Crédito" : "Débito"}</td>
+          {forecast.map(row => <tr key={row.saleId}><td>{row.paymentMethod === "CREDIT" ? "Crédito" : row.paymentMethod === "DEBIT" ? "Débito" : "Pix"}</td>
             <td>{row.provider || "Configurar taxa"}</td><td>{brl(row.gross)}</td>
             <td>{row.fee === null ? "Não configurada" : brl(row.fee)}</td>
             <td>{row.net === null ? "Não calculado" : brl(row.net)}</td>
             <td>{row.expectedAt ? formatDate(row.expectedAt) : "-"}</td></tr>)}
-        </tbody></table>{!forecast.length && <p className="empty-state">Nenhuma venda no cartão no mês.</p>}</div>
+        </tbody></table>{!forecast.length && <p className="empty-state">{estimatesEnabled ? "Nenhuma venda com taxas configuradas neste mês." : "Estimativas desligadas para este estabelecimento."}</p>}</div>
       </div>
     </section>
     <section className="card">
