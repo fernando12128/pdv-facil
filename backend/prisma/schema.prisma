@@ -52,6 +52,7 @@ model Market {
   email     String
   phone     String?
   address   String?
+  cardFeeEstimatesEnabled Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -532,10 +533,12 @@ model CardFeeRule {
   feeBps Int
   settlementDays Int @default(1)
   active Boolean @default(true)
+  isDefault Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   market Market @relation(fields: [marketId], references: [id])
-  @@unique([marketId, paymentMethod])
+  @@unique([marketId, paymentMethod, providerName])
+  @@index([marketId, paymentMethod, active])
 }
 
 model BankTransactionSale {
