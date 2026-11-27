@@ -242,6 +242,52 @@ try {
     paymentMethod: "DEBIT", providerName: "Maquininha fictícia", feePercent: 1.75, settlementDays: 1
   } });
   assert(cardRule.status === 200 && cardRule.data.rule.feeBps === 175, "Taxa de cartão salva por empresa");
+  const secondMachine = await request("/finance-ops/card-fees", { token: tokenA, method: "PUT", body: {
+    paymentMethod: "DEBIT", providerName: "Maquininha alternativa", feePercent: 0.9, settlementDays: 2, isDefault: false
+  } });
+  assert(secondMachine.status === 200, "Segunda maquininha na mesma modalidade cadastrada");
+  const pixTerminal = await request("/finance-ops/card-fees", { token: tokenA, method: "PUT", body: {
+    paymentMethod: "PIX", providerName: "Pix maquininha", feePercent: 0, settlementDays: 0, isDefault: true
+  } });
+  assert(pixTerminal.status === 200 && pixTerminal.data.rule.paymentMethod === "PIX", "Pix tem maquininha própria");
+  const terminalList = await request("/finance-ops/card-fees", { token: tokenA });
+  assert(terminalList.data.rules.filter(r => r.paymentMethod === "DEBIT").length === 2 &&
+    terminalList.data.rules.find(r => r.providerName === "Maquininha fictícia")?.isDefault === true,
+    "Regras para várias maquininhas coexistem sem substituir a padrão");
+  const newDefault = await request(`/finance-ops/card-fees/${secondMachine.data.rule.id}/default`, {
+    token: tokenA, method: "PATCH"
+  });
+  assert(newDefault.status === 200, "Alternativa pode tornar-se padrão");
+  const afterDefault = await request("/finance-ops/card-fees", { token: tokenA });
+  assert(afterDefault.data.rules.find(r => r.id === secondMachine.data.rule.id)?.isDefault === true &&
+    afterDefault.data.rules.find(r => r.id === cardRule.data.rule.id)?.isDefault === false,
+    "Somente uma maquininha padrão por modalidade");
+  const alternateDisabled = await request(`/finance-ops/card-fees/${secondMachine.data.rule.id}/status`, {
+    token: tokenA, method: "PATCH"
+  });
+  assert(alternateDisabled.status === 200, "Maquininha pode ser desativada");
+  const afterDisable = await request("/finance-ops/card-fees", { token: tokenA });
+  assert(afterDisable.data.rules.find(r => r.id === cardRule.data.rule.id)?.isDefault === true &&
+    afterDisable.data.rules.find(r => r.id === secondMachine.data.rule.id)?.active === false,
+    "Ao desativar padrão, alternativa ativa assume");
+  const forbiddenChange = await request(`/finance-ops/card-fees/${cardRule.data.rule.id}/default`, {
+    token: tokenB, method: "PATCH"
+  });
+  assert(forbiddenChange.status === 404, "Outra empresa não altera maquininha");
+  const disableEstimates = await request("/finance-ops/card-fees/settings", {
+    token: tokenA, method: "PATCH", body: { enabled: false }
+  });
+  assert(disableEstimates.status === 200 && disableEstimates.data.estimatesEnabled === false,
+    "Empresa pode desligar cálculo de taxas");
+  const disabledForecast = await request("/finance-ops/card-forecast?month=2026-12", { token: tokenA });
+  assert(disabledForecast.status === 200 && disabledForecast.data.estimatesEnabled === false &&
+    disabledForecast.data.forecast.length === 0, "Previsão realmente desativada");
+  const otherFeeSettings = await request("/finance-ops/card-fees", { token: tokenB });
+  assert(otherFeeSettings.data.estimatesEnabled === true, "Desativação de estimativas não afeta outra empresa");
+  const enableEstimates = await request("/finance-ops/card-fees/settings", {
+    token: tokenA, method: "PATCH", body: { enabled: true }
+  });
+  assert(enableEstimates.status === 200, "Reativação de estimativas funciona");
   const otherRules = await request("/finance-ops/card-fees", { token: tokenB });
   assert(otherRules.status === 200 && otherRules.data.rules.length === 0, "Configuração de cartão não vaza entre empresas");
   const forecast = await request("/finance-ops/card-forecast?month=2026-12", { token: tokenA });
