@@ -164,20 +164,22 @@ financialOperationsRoutes.get("/transactions/:id/sale-suggestions", async (req: 
     id: req.params.id, marketId, status: "UNMATCHED", amountCents: { gt: 0 }
   } });
   if (!movement) return res.status(404).json({ message: "Crédito não encontrado ou já conciliado." });
-  const [sales, rules] = await Promise.all([
+  const [sales, rules, market] = await Promise.all([
     prisma.productSale.findMany({ where: {
       marketId, status: "COMPLETED", paymentMethod: { in: ["PIX", "DEBIT", "CREDIT"] },
       bankSettlement: null,
       createdAt: { gte: new Date(movement.date.getTime() - 30 * 86400000), lte: new Date(movement.date.getTime() + 30 * 86400000) }
     }, take: 100, orderBy: { createdAt: "desc" } }),
-    prisma.cardFeeRule.findMany({ where: { marketId, active: true } })
+    prisma.cardFeeRule.findMany({ where: { marketId, active: true, isDefault: true } }),
+    prisma.market.findUnique({ where: { id: marketId }, select: { cardFeeEstimatesEnabled: true } })
   ]);
-  const byMethod = new Map(rules.map(rule => [rule.paymentMethod, rule]));
+  if (market?.cardFeeEstimatesEnabled === false) return res.json({ suggestions: [], notice: "Estimativas desligadas." });
+  const byMethod = defaultFeeByMethod(rules);
   const suggestions = sales.flatMap(sale => {
     const gross = Math.round(sale.total * 100);
     const rule = byMethod.get(sale.paymentMethod);
     if (sale.paymentMethod !== "PIX" && !rule) return [];
-    const fee = sale.paymentMethod === "PIX" ? 0 : Math.round(gross * rule!.feeBps / 10000);
+    const fee = rule ? Math.round(gross * rule.feeBps / 10000) : 0;
     const expected = gross - fee;
     if (movement.amountCents !== expected) return [];
     return [{ id: sale.id, createdAt: sale.createdAt, paymentMethod: sale.paymentMethod, gross: money(gross), net: money(expected), fee: money(fee) }];
@@ -186,6 +188,8 @@ financialOperationsRoutes.get("/transactions/:id/sale-suggestions", async (req: 
 });
 financialOperationsRoutes.post("/transactions/:id/reconcile-sale", async (req: AuthenticatedRequest, res) => {
   const marketId = req.user!.marketId, saleId = req.body?.saleId;
+  const market = await prisma.market.findUnique({ where: { id: marketId }, select: { cardFeeEstimatesEnabled: true } });
+  if (market?.cardFeeEstimatesEnabled === false) return res.status(409).json({ message: "Estimativas desativadas. Conciliação automática de vendas por taxa indisponível." });
   if (typeof saleId !== "string") return res.status(400).json({ message: "Selecione uma venda." });
   try {
     const result = await prisma.$transaction(async tx => {
@@ -194,11 +198,11 @@ financialOperationsRoutes.post("/transactions/:id/reconcile-sale", async (req: A
         paymentMethod: { in: ["PIX","DEBIT","CREDIT"] }, bankSettlement: null } });
       if (!movement || !sale) return "NOT_FOUND";
       const gross = Math.round(sale.total * 100);
-      const rule = sale.paymentMethod === "PIX" ? null : await tx.cardFeeRule.findUnique({
-        where: { marketId_paymentMethod: { marketId, paymentMethod: sale.paymentMethod } }
+      const rule = await tx.cardFeeRule.findFirst({
+        where: { marketId, paymentMethod: sale.paymentMethod, active: true, isDefault: true }
       });
-      if (sale.paymentMethod !== "PIX" && (!rule || !rule.active)) return "FEE_MISSING";
-      const fee = sale.paymentMethod === "PIX" ? 0 : Math.round(gross * rule!.feeBps / 10000);
+      if (sale.paymentMethod !== "PIX" && !rule) return "FEE_MISSING";
+      const fee = rule ? Math.round(gross * rule.feeBps / 10000) : 0;
       if (movement.amountCents !== gross - fee) return "MISMATCH";
       const claim = await tx.bankTransaction.updateMany({ where: { id: movement.id, marketId, status: "UNMATCHED" },
         data: { status: "MATCHED" } });
