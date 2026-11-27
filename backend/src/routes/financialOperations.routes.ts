@@ -29,6 +29,15 @@ async function audit(tx: any, marketId: string, userId: string, action: string, 
   await tx.financeAuditLog.create({ data: { marketId, userId, action, targetType, targetId, details: details || null } });
 }
 
+type FeeRule = { paymentMethod: string; feeBps: number; settlementDays: number; providerName: string; isDefault: boolean; active: boolean };
+function defaultFeeByMethod(rules: FeeRule[]) {
+  const byMethod = new Map<string, FeeRule>();
+  for (const rule of rules) {
+    if (rule.active && rule.isDefault) byMethod.set(rule.paymentMethod, rule);
+  }
+  return byMethod;
+}
+
 financialOperationsRoutes.get("/accounts", async (req: AuthenticatedRequest, res) => {
   const accounts = await prisma.bankAccount.findMany({ where: { marketId: req.user!.marketId }, orderBy: { createdAt: "desc" } });
   return res.json({ accounts });
@@ -295,28 +304,82 @@ financialOperationsRoutes.get("/audit", async (req: AuthenticatedRequest, res) =
   return res.json({ logs });
 });
 financialOperationsRoutes.get("/card-fees", async (req: AuthenticatedRequest, res) => {
-  const rules = await prisma.cardFeeRule.findMany({ where: { marketId: req.user!.marketId } });
-  return res.json({ rules });
+  const marketId = req.user!.marketId;
+  const [rules, market] = await Promise.all([
+    prisma.cardFeeRule.findMany({ where: { marketId }, orderBy: [{ paymentMethod: "asc" }, { providerName: "asc" }] }),
+    prisma.market.findUnique({ where: { id: marketId }, select: { cardFeeEstimatesEnabled: true } })
+  ]);
+  return res.json({ rules, estimatesEnabled: market?.cardFeeEstimatesEnabled ?? true });
+});
+financialOperationsRoutes.patch("/card-fees/settings", async (req: AuthenticatedRequest, res) => {
+  if (typeof req.body?.enabled !== "boolean")
+    return res.status(400).json({ message: "Informe enabled como verdadeiro ou falso." });
+  const marketId = req.user!.marketId;
+  await prisma.$transaction(async tx => {
+    await tx.market.update({ where: { id: marketId }, data: { cardFeeEstimatesEnabled: req.body.enabled } });
+    await audit(tx, marketId, req.user!.userId, "TOGGLE_ESTIMATES", "CARD_FEES", marketId, String(req.body.enabled));
+  });
+  return res.json({ estimatesEnabled: req.body.enabled });
 });
 financialOperationsRoutes.put("/card-fees", async (req: AuthenticatedRequest, res) => {
   const marketId = req.user!.marketId;
-  const { paymentMethod, providerName, feePercent, settlementDays } = req.body || {};
-  if (!["CREDIT", "DEBIT"].includes(paymentMethod) ||
-      typeof providerName !== "string" || !providerName.trim() || providerName.length > 120 ||
+  const { paymentMethod, providerName, feePercent, settlementDays, isDefault } = req.body || {};
+  if (!["CREDIT", "DEBIT", "PIX"].includes(paymentMethod) ||
+      typeof providerName !== "string" || !providerName.trim() || providerName.trim().length > 120 ||
       typeof feePercent !== "number" || !Number.isFinite(feePercent) || feePercent < 0 || feePercent > 30 ||
-      !Number.isSafeInteger(settlementDays) || settlementDays < 0 || settlementDays > 90)
-    return res.status(400).json({ message: "Informe modalidade, adquirente, percentual (0–30) e prazo (0–90 dias)." });
+      !Number.isSafeInteger(settlementDays) || settlementDays < 0 || settlementDays > 90 ||
+      (isDefault !== undefined && typeof isDefault !== "boolean")) {
+    return res.status(400).json({ message: "Informe modalidade (crédito, débito ou Pix), adquirente, percentual (0–30) e prazo (0–90 dias)." });
+  }
+  const name = providerName.trim();
   const feeBps = Math.round(feePercent * 100);
   const saved = await prisma.$transaction(async tx => {
+    const oldDefault = await tx.cardFeeRule.findFirst({ where: { marketId, paymentMethod, active: true, isDefault: true } });
+    const makeDefault = isDefault === true || (!oldDefault && isDefault !== false);
+    if (makeDefault) await tx.cardFeeRule.updateMany({ where: { marketId, paymentMethod }, data: { isDefault: false } });
     const rule = await tx.cardFeeRule.upsert({
-      where: { marketId_paymentMethod: { marketId, paymentMethod } },
-      create: { marketId, paymentMethod, providerName: providerName.trim(), feeBps, settlementDays },
-      update: { providerName: providerName.trim(), feeBps, settlementDays, active: true }
+      where: { marketId_paymentMethod_providerName: { marketId, paymentMethod, providerName: name } },
+      create: { marketId, paymentMethod, providerName: name, feeBps, settlementDays, active: true, isDefault: makeDefault },
+      update: { feeBps, settlementDays, active: true, ...(makeDefault ? { isDefault: true } : {}) }
     });
-    await audit(tx, marketId, req.user!.userId, "CONFIGURE", "CARD_FEE", rule.id, paymentMethod);
+    await audit(tx, marketId, req.user!.userId, "CONFIGURE", "CARD_FEE", rule.id, paymentMethod + " " + name);
     return rule;
   });
   return res.json({ rule: saved });
+});
+financialOperationsRoutes.patch("/card-fees/:id/default", async (req: AuthenticatedRequest, res) => {
+  const marketId = req.user!.marketId;
+  const rule = await prisma.cardFeeRule.findFirst({ where: { id: req.params.id, marketId } });
+  if (!rule || !rule.active) return res.status(404).json({ message: "Maquininha ativa não encontrada." });
+  await prisma.$transaction(async tx => {
+    await tx.cardFeeRule.updateMany({ where: { marketId, paymentMethod: rule.paymentMethod }, data: { isDefault: false } });
+    await tx.cardFeeRule.update({ where: { id: rule.id }, data: { isDefault: true } });
+    await audit(tx, marketId, req.user!.userId, "SET_DEFAULT", "CARD_FEE", rule.id);
+  });
+  return res.json({ message: "Maquininha padrão definida para esta modalidade." });
+});
+financialOperationsRoutes.patch("/card-fees/:id/status", async (req: AuthenticatedRequest, res) => {
+  const marketId = req.user!.marketId;
+  const rule = await prisma.cardFeeRule.findFirst({ where: { id: req.params.id, marketId } });
+  if (!rule) return res.status(404).json({ message: "Maquininha não encontrada." });
+  const enabled = !rule.active;
+  await prisma.$transaction(async tx => {
+    await tx.cardFeeRule.update({ where: { id: rule.id }, data: {
+      active: enabled, isDefault: enabled ? rule.isDefault : false
+    } });
+    if (!enabled && rule.isDefault) {
+      const next = await tx.cardFeeRule.findFirst({ where: {
+        marketId, paymentMethod: rule.paymentMethod, active: true, id: { not: rule.id }
+      }, orderBy: { createdAt: "asc" } });
+      if (next) await tx.cardFeeRule.update({ where: { id: next.id }, data: { isDefault: true } });
+    }
+    if (enabled) {
+      const current = await tx.cardFeeRule.findFirst({ where: { marketId, paymentMethod: rule.paymentMethod, active: true, isDefault: true } });
+      if (!current) await tx.cardFeeRule.update({ where: { id: rule.id }, data: { isDefault: true } });
+    }
+    await audit(tx, marketId, req.user!.userId, enabled ? "ACTIVATE" : "DISABLE", "CARD_FEE", rule.id);
+  });
+  return res.json({ message: enabled ? "Maquininha ativada." : "Maquininha desativada." });
 });
 financialOperationsRoutes.get("/card-forecast", async (req: AuthenticatedRequest, res) => {
   const month = String(req.query.month || new Date().toISOString().slice(0, 7));
@@ -324,13 +387,15 @@ financialOperationsRoutes.get("/card-forecast", async (req: AuthenticatedRequest
   const from = new Date(month + "-01T00:00:00.000Z");
   const to = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
   const marketId = req.user!.marketId;
-  const [sales, rules] = await Promise.all([
-    prisma.productSale.findMany({ where: { marketId, status: "COMPLETED", createdAt: { gte: from, lt: to }, paymentMethod: { in: ["CREDIT","DEBIT"] } },
+  const [sales, rules, market] = await Promise.all([
+    prisma.productSale.findMany({ where: { marketId, status: "COMPLETED", createdAt: { gte: from, lt: to }, paymentMethod: { in: ["CREDIT", "DEBIT", "PIX"] } },
       select: { id: true, createdAt: true, paymentMethod: true, total: true } }),
-    prisma.cardFeeRule.findMany({ where: { marketId, active: true } })
+    prisma.cardFeeRule.findMany({ where: { marketId, active: true, isDefault: true } }),
+    prisma.market.findUnique({ where: { id: marketId }, select: { cardFeeEstimatesEnabled: true } })
   ]);
-  const byMethod = new Map(rules.map(rule => [rule.paymentMethod, rule]));
-  const forecast = sales.map(sale => {
+  const enabled = market?.cardFeeEstimatesEnabled ?? true;
+  const byMethod = defaultFeeByMethod(rules);
+  const forecast = enabled ? sales.filter(sale => sale.paymentMethod !== "PIX" || byMethod.has("PIX")).map(sale => {
     const rule = byMethod.get(sale.paymentMethod);
     const grossCents = Math.round(sale.total * 100);
     const feeCents = rule ? Math.round(grossCents * rule.feeBps / 10000) : null;
@@ -343,8 +408,10 @@ financialOperationsRoutes.get("/card-forecast", async (req: AuthenticatedRequest
       net: feeCents === null ? null : money(grossCents - feeCents),
       expectedAt: expected?.toISOString() || null
     };
-  });
-  return res.json({ month, forecast, notice: "Previsão gerencial estimada. Não confirma crédito bancário, parcelamento ou taxas reais cobradas." });
+  }) : [];
+  return res.json({ month, estimatesEnabled: enabled, forecast, notice: enabled
+    ? "Previsão gerencial pela maquininha padrão da modalidade, sem identificar a maquininha usada na venda. Pode divergir das taxas reais."
+    : "Estimativas de taxas desativadas por este estabelecimento. Nenhum valor é calculado." });
 });
 financialOperationsRoutes.get("/connectors", async (_req, res) => {
   return res.json({ providers: [
