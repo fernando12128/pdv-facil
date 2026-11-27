@@ -21,6 +21,15 @@ const labels: Array<[keyof Omit<FiscalSettingsInput, "receiptWidth" | "taxRegime
   ["complementaryAddress", "Complemento", "Opcional"]
 ];
 
+const formatCnpj = (value: string) => {
+  const d = value.replace(/\D/g, "").slice(0, 14);
+  return d
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1/$2")
+    .replace(/(\d{4})(\d)/, "$1-$2");
+};
+
 export default function FiscalSettingsPanel() {
   const [form, setForm] = useState<FiscalSettingsInput>(empty);
   const [saving, setSaving] = useState(false);
@@ -55,8 +64,10 @@ export default function FiscalSettingsPanel() {
       <div className="grid-2">
         {labels.map(([field, label, placeholder]) => <div className="field" key={field}>
           <label>{label}</label>
-          <input value={String(form[field] ?? "")} placeholder={placeholder}
-            onChange={e => setForm(current => ({ ...current, [field]: e.target.value }))} />
+          <input value={field === "cnpj" ? formatCnpj(String(form.cnpj ?? "")) : String(form[field] ?? "")}
+            placeholder={placeholder} inputMode={field === "cnpj" ? "numeric" : undefined}
+            maxLength={field === "cnpj" ? 18 : undefined}
+            onChange={e => setForm(current => ({ ...current, [field]: field === "cnpj" ? e.target.value.replace(/\D/g, "").slice(0, 14) : e.target.value }))} />
         </div>)}
         <div className="field"><label>Regime tributário</label>
           <select value={form.taxRegime || ""} onChange={e => setForm(f => ({ ...f, taxRegime: e.target.value }))}>
